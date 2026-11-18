@@ -6,6 +6,7 @@
  *
  *   st25r3916_probe            identity only
  *   st25r3916_probe <seconds>  also poll for a tag for that long
+ *   st25r3916_probe <seconds> <file>  also write the 540-byte NTAG215 image of the tag to <file>
  */
 
 #include "st25r3916.h"
@@ -13,6 +14,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <vector>
 #include <thread>
 
 int main(int argc, char** argv) {
@@ -65,6 +67,24 @@ int main(int argc, char** argv) {
                 } else {
                     std::printf("READ page %u failed\n", first);
                 }
+            }
+            if (argc > 2) {
+                std::vector<uint8_t> image;
+                for (uint8_t first = 0; first <= 128; first = static_cast<uint8_t>(first + 4)) {
+                    if (!chip.type2_read(first, page)) {
+                        std::fprintf(stderr, "dump: READ page %u failed\n", first);
+                        return 4;
+                    }
+                    image.insert(image.end(), page, page + 16);
+                }
+                image.resize(540); // pages 130-134 (locks, password) are not signed and not needed
+                std::FILE* f = std::fopen(argv[2], "wb");
+                if (!f || std::fwrite(image.data(), 1, image.size(), f) != image.size()) {
+                    std::fprintf(stderr, "dump: cannot write %s\n", argv[2]);
+                    return 5;
+                }
+                std::fclose(f);
+                std::printf("dumped %zu bytes to %s\n", image.size(), argv[2]);
             }
             return 0;
         }
