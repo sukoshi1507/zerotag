@@ -9,6 +9,17 @@ derived from its GPL-2.0 code.
 
 Amiibo key files (`key_retail.bin`) are not shipped: the user provides their own.
 
+## Amiibo catalogue
+
+`assets/amiibo/amiibo_db.json` is an offline cache of the character list from
+[AmiiboAPI](https://www.amiiboapi.org) (metadata only: id, name, character, series, type). It contains no NFC
+data. Refresh it with `tools/fetch_amiibo_db.py`.
+
+`assets/amiibo/images/<id>.png` holds a thumbnail (at most 120x88) of each amiibo, taken from the AmiiboAPI
+image repository and shrunk by `tools/fetch_amiibo_images.py`. The `<id>` matches the catalogue `id`.
+
+AmiiboAPI is not affiliated with Nintendo; Amiibo is a trademark of Nintendo.
+
 Derived from the CardputerZero application template (MIT).
 
 ## Project Overview
