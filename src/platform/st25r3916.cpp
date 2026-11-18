@@ -323,13 +323,18 @@ bool St25r3916::read_fifo(uint8_t* buf, size_t max, size_t& actual) {
 }
 
 bool St25r3916::write_fifo(const uint8_t* buf, size_t len) {
-    uint8_t tx[40];
-    if (len + 1 > sizeof(tx)) {
-        return false;
+    // Each load appends to the FIFO, so long frames are sent in chunks that fit the transfer buffer.
+    constexpr size_t kChunk = 32;
+    uint8_t tx[kChunk + 1];
+    for (size_t offset = 0; offset < len; offset += kChunk) {
+        const size_t n = std::min(kChunk, len - offset);
+        tx[0] = kOpLoadFifo;
+        std::memcpy(tx + 1, buf + offset, n);
+        if (!transfer(tx, nullptr, n + 1)) {
+            return false;
+        }
     }
-    tx[0] = kOpLoadFifo;
-    std::memcpy(tx + 1, buf, len);
-    return transfer(tx, nullptr, len + 1);
+    return true;
 }
 
 // No-response timer, 64/fc steps (4.72 us), as selected by the default timer control value.

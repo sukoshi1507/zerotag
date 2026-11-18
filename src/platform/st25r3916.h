@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <string>
 
 namespace platform {
@@ -68,6 +69,15 @@ public:
     // REQA/WUPA + anticollision + select (cascade levels 1..3). Returns false when no tag answers.
     bool detect_tag(Tag& tag, std::string& error);
 
+    // --- NFC-A card emulation (NTAG215 / Type 2 tag) ---
+    // The chip answers REQA/WUPA/anticollision/select by itself from its passive-target memory; this
+    // method serves the Type 2 commands (READ, FAST_READ, GET_VERSION, READ_SIG, PWD_AUTH, WRITE, HLTA)
+    // from `image` (540 bytes, writes from the reader modify it in place). It runs for `seconds`
+    // (<= 0: until `stop` returns true) and reports what happens through `log`.
+    using EmulationLog = std::function<void(const std::string&)>;
+    bool emulate_ntag215(uint8_t* image, int seconds, const EmulationLog& log, std::string& error,
+                         const std::function<bool()>& stop = {});
+
 private:
     St25r3916Config config_;
     int spi_fd_{-1};
@@ -98,6 +108,13 @@ private:
     bool anticollision(uint8_t level, uint8_t out[5], std::string& error);
     bool select_level(uint8_t level, const uint8_t id[5], uint8_t& sak);
     bool enable_oscillator();
+
+    // Emulation internals (st25r3916_emulation.cpp)
+    bool write_mask_interrupts(uint32_t mask);
+    bool read_mask_interrupts(uint32_t& mask);
+    bool modify_mask_interrupts(uint32_t unmask, uint32_t mask);
+    bool load_pt_memory_a(const uint8_t* data, size_t len);
+    bool transmit_bits(const uint8_t* frame, size_t bits, bool with_crc);
 };
 
 } // namespace platform
