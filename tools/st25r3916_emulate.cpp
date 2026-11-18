@@ -36,8 +36,9 @@ int main(int argc, char** argv) {
         image[9] = 0x48;
         const uint8_t cc[4] = {0xE1, 0x10, 0x3E, 0x00}; // NTAG215 capability container
         std::memcpy(&image[12], cc, 4);
-        const uint8_t ndef_empty[4] = {0x03, 0x00, 0xFE, 0x00};
-        std::memcpy(&image[16], ndef_empty, 4);
+        // NDEF TLV with one text record "hello" (en), so a phone has something to display.
+        const uint8_t ndef[] = {0x03, 0x0C, 0xD1, 0x01, 0x08, 0x54, 0x02, 'e', 'n', 'h', 'e', 'l', 'l', 'o', 0xFE};
+        std::memcpy(&image[16], ndef, sizeof(ndef));
         image[536] = 0x80; image[537] = 0x80; // PACK
     } else {
         std::FILE* f = std::fopen(argv[1], "rb");
