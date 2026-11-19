@@ -54,12 +54,11 @@ mkdir -p ~/.zerotag ~/amiibo
 cp key_retail.bin ~/.zerotag/key_retail.bin && chmod 600 ~/.zerotag/key_retail.bin
 ```
 
-**Thumbnails** are artwork owned by Nintendo and are not distributed. To show them, run once on any machine with
-Python and Pillow (`uv run` or `pip install pillow`), then copy the folder to the device:
-
-```shell
-tools/fetch_amiibo_images.py --out ~/.zerotag/images
-```
+**Thumbnails**: the `.deb` includes a small picture of each amiibo (artwork owned by Nintendo, taken from the
+AmiiboAPI image repository, for display only). They are not part of this source repository. If you build from source,
+fetch them yourself with `tools/fetch_amiibo_images.py` (Python with Pillow) into `assets/amiibo/images` before
+packaging, or into `~/.zerotag/images` on the device (the app looks in `/usr/share/zerotag/amiibo/images` first, then
+there). Without them the app works and shows empty frames.
 
 Backups go in `~/amiibo` (override with `ZEROTAG_AMIIBO_DIR`; keys with `ZEROTAG_KEYS`).
 

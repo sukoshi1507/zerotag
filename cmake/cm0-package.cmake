@@ -42,9 +42,15 @@ install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets/audio/"
     DESTINATION "${CMAKE_INSTALL_DATADIR}/${APP_NAME}/audio"
     PATTERN ".DS_Store" EXCLUDE
 )
-# The amiibo thumbnails are Nintendo artwork fetched by tools/fetch_amiibo_images.py: they are not part of the
-# repository and, by default, not packaged. Turn this on for a private build that includes your own copy.
-option(ZEROTAG_BUNDLE_AMIIBO_IMAGES "Package assets/amiibo/images (private builds only)" OFF)
+# The amiibo thumbnails (artwork owned by Nintendo, fetched by tools/fetch_amiibo_images.py) are not part of the
+# source repository. They are packaged in the .deb whenever the folder exists on the build machine, so installed
+# apps show them; a clone without the folder builds a package without thumbnails.
+if(IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets/amiibo/images")
+    set(_ZT_BUNDLE_IMAGES_DEFAULT ON)
+else()
+    set(_ZT_BUNDLE_IMAGES_DEFAULT OFF)
+endif()
+option(ZEROTAG_BUNDLE_AMIIBO_IMAGES "Package assets/amiibo/images" ${_ZT_BUNDLE_IMAGES_DEFAULT})
 if(ZEROTAG_BUNDLE_AMIIBO_IMAGES)
     install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets/amiibo/"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/${APP_NAME}/amiibo"

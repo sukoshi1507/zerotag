@@ -17,7 +17,8 @@ ZeroTag itself is MIT licensed (see `LICENSE`). It uses or derives from the foll
 
 - **Amiibo keys** (`key_retail.bin`): you must supply your own, ZeroTag never ships or downloads them.
 - **Amiibo artwork**: the thumbnails come from the AmiiboAPI image repository and belong to Nintendo. They are
-  not part of this repository or of the packages; `tools/fetch_amiibo_images.py` downloads them on your machine.
+  included in the `.deb` packages for display only and are **not** part of this source repository;
+  `tools/fetch_amiibo_images.py` downloads them on your machine.
 - pixl.js (GPL-2.0) is an inspiration only: no code from it is used.
 
 Amiibo is a trademark of Nintendo. ZeroTag is not affiliated with or endorsed by Nintendo, M5Stack or AmiiboAPI.
