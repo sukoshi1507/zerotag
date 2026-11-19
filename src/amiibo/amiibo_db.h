@@ -22,6 +22,19 @@ struct Entry {
     uint32_t tail{0};
 };
 
+// Fields the catalogue can be browsed by.
+enum class Facet : uint8_t {
+    AmiiboSeries, // amiibo_series, e.g. "Super Smash Bros."
+    Game,         // game_series, e.g. "The Legend of Zelda"
+    Type,         // type: Figure, Card, Band, Block, Yarn
+};
+
+// One distinct value of a facet and the number of entries that have it.
+struct FacetCount {
+    std::string value;
+    size_t count{0};
+};
+
 class Database {
 public:
     // Loads the catalogue. Entries with an invalid id are skipped.
@@ -33,6 +46,12 @@ public:
     // Case-insensitive substring search over name, character, game series and amiibo series.
     // Every whitespace-separated word of `query` has to match. An empty query returns everything.
     std::vector<const Entry*> search(const std::string& query) const;
+
+    // Distinct non-empty values of `facet`, sorted case-insensitively, with their entry counts.
+    std::vector<FacetCount> facet_counts(Facet facet) const;
+
+    // Entries whose `facet` equals `value` (case-insensitive, exact) and that match `query` as search() does.
+    std::vector<const Entry*> search_in(Facet facet, const std::string& value, const std::string& query) const;
 
     // `<images_dir>/<id>.png`
     static std::string image_path(const std::string& images_dir, const Entry& entry);

@@ -12,10 +12,15 @@
 #include "screenshot_service.h"
 
 #include <algorithm>
+#include <cctype>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <thread>
+#include <vector>
 
 #include <pwd.h>
 #include <unistd.h>
@@ -56,6 +61,99 @@ std::string clip(const std::string& s, size_t n) {
     return s.size() <= n ? s : s.substr(0, n - 1) + "...";
 }
 
+// Catalogue facets, in the order of the Facets screen.
+constexpr amiibo::Facet kFacetChoices[] = {amiibo::Facet::AmiiboSeries, amiibo::Facet::Game, amiibo::Facet::Type};
+constexpr size_t kFacetChoiceCount = sizeof(kFacetChoices) / sizeof(kFacetChoices[0]);
+
+const char* facet_label(amiibo::Facet facet) {
+    switch (facet) {
+    case amiibo::Facet::AmiiboSeries: return tr(Str::FacetSeries);
+    case amiibo::Facet::Game: return tr(Str::FacetGame);
+    case amiibo::Facet::Type: return tr(Str::FacetType);
+    }
+    return "";
+}
+
+size_t facet_index(amiibo::Facet facet) {
+    for (size_t i = 0; i < kFacetChoiceCount; ++i) {
+        if (kFacetChoices[i] == facet) return i;
+    }
+    return 0;
+}
+
+// ---- scan helpers
+constexpr int kNtagPages = 135;          // 540 bytes
+constexpr size_t kModelInfoOffset = 0x54; // head and tail, big endian (pages 21-22)
+
+uint32_t scan_be32(const uint8_t* p) {
+    return (static_cast<uint32_t>(p[0]) << 24) | (static_cast<uint32_t>(p[1]) << 16) |
+           (static_cast<uint32_t>(p[2]) << 8) | p[3];
+}
+
+std::string scan_uid_text(const amiibo::TagImage& image) {
+    char b[32];
+    std::snprintf(b, sizeof(b), "%02X:%02X:%02X:%02X:%02X:%02X:%02X", image[0], image[1], image[2], image[4],
+                  image[5], image[6], image[7]);
+    return b;
+}
+
+// File name of a new backup: the character when it is in the catalogue, else the UID. Same convention as
+// amiibo::Library::create (name_UIDsuffix); the suffix avoids two copies of one character clashing.
+std::string scan_stem(const amiibo::Entry* entry, const amiibo::TagImage& image) {
+    char uid[16];
+    std::snprintf(uid, sizeof(uid), "%02X%02X%02X%02X%02X%02X%02X", image[0], image[1], image[2], image[4], image[5],
+                  image[6], image[7]);
+    if (!entry) {
+        return uid;
+    }
+    std::string stem;
+    for (const char c : entry->name) {
+        stem += std::isalnum(static_cast<unsigned char>(c)) != 0 ? c : '_';
+    }
+    if (stem.empty()) {
+        stem = entry->id;
+    }
+    if (stem.size() > 48) {
+        stem.resize(48);
+    }
+    char suffix[16];
+    std::snprintf(suffix, sizeof(suffix), "_%02X%02X%02X%02X", image[4], image[5], image[6], image[7]);
+    return stem + suffix;
+}
+
+// Reads the 135 pages of an NTAG215 (GET_VERSION first). Runs on the scan worker thread.
+bool scan_read_tag(platform::St25r3916& chip, std::atomic<int>& progress, std::atomic<ScanIssue>& issue,
+                   std::atomic<int>& issue_page, amiibo::TagImage& image) {
+    uint8_t version[8] = {};
+    if (!chip.type2_get_version(version)) {
+        issue = ScanIssue::Interrupted;
+        issue_page = 0;
+        return false;
+    }
+    // NTAG family (version[2] = 0x04), storage 0x11 = NTAG215
+    if (version[2] != 0x04 || version[6] != 0x11) {
+        issue = ScanIssue::NotNtag215;
+        return false;
+    }
+    // Blocks of 4 pages: 0, 4, ..., 128 cover pages 0-131; the last block starts at 131 so that it ends on page 134.
+    uint8_t block[16] = {};
+    std::vector<int> starts;
+    for (int page = 0; page <= 128; page += 4) {
+        starts.push_back(page);
+    }
+    starts.push_back(kNtagPages - 4);
+    for (const int page : starts) {
+        if (!chip.type2_read(static_cast<uint8_t>(page), block)) {
+            issue = ScanIssue::Interrupted;
+            issue_page = page;
+            return false;
+        }
+        std::memcpy(image.data() + page * 4, block, sizeof(block));
+        progress = std::min(page + 4, kNtagPages);
+    }
+    return true;
+}
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -86,6 +184,7 @@ ZeroTagUi::ZeroTagUi(AssetManager& assets, bool dark_mode, std::function<void()>
 }
 
 ZeroTagUi::~ZeroTagUi() {
+    stop_scan();
     if (timer_) {
         lv_timer_delete(timer_);
     }
@@ -136,6 +235,11 @@ void ZeroTagUi::load_data() {
     if (!keys_ok_) {
         LOG_WARN("keys: {}", keys_error_);
     }
+    state_path_ = home_dir() + "/.zerotag/library_state.txt";
+    std::string state_error;
+    if (!amiibo::load_library_state(state_path_, state_, state_error)) {
+        LOG_WARN("library state: {}", state_error);
+    }
     rescan_library();
 }
 
@@ -148,18 +252,93 @@ void ZeroTagUi::rescan_library() {
 }
 
 std::vector<const amiibo::Item*> ZeroTagUi::visible_items() const {
+    std::vector<const amiibo::Item*> items;
     if (!lib_query_.empty()) {
-        return library_.search(lib_query_);
+        items = library_.search(lib_query_);
+    } else {
+        for (const auto& item : library_.items()) {
+            items.push_back(&item);
+        }
     }
-    std::vector<const amiibo::Item*> all;
-    for (const auto& item : library_.items()) {
-        all.push_back(&item);
+
+    // Favourites and recent list: the tab filters the search result; "All" puts favourites first (scan order kept).
+    if (lib_tab_ == LibTab::Recent) {
+        std::vector<const amiibo::Item*> recent;
+        for (const auto& name : state_.recent) {
+            for (const auto* item : items) {
+                if (base_name(item->path) == name) {
+                    recent.push_back(item);
+                    break;
+                }
+            }
+        }
+        return recent;
     }
-    return all;
+    if (lib_tab_ == LibTab::Favorites) {
+        items.erase(std::remove_if(items.begin(), items.end(),
+                                   [this](const amiibo::Item* item) {
+                                       return !state_.is_favorite(base_name(item->path));
+                                   }),
+                    items.end());
+    } else {
+        std::stable_partition(items.begin(), items.end(), [this](const amiibo::Item* item) {
+            return state_.is_favorite(base_name(item->path));
+        });
+    }
+    return items;
 }
 
 std::vector<const amiibo::Entry*> ZeroTagUi::visible_entries() const {
+    if (filter_on_) {
+        return db_.search_in(filter_facet_, filter_value_, cat_query_);
+    }
     return db_.search(cat_query_);
+}
+
+// ---------------------------------------------------------------------------
+// Favourites and recent list (persisted in ~/.zerotag/library_state.txt)
+// ---------------------------------------------------------------------------
+
+int ZeroTagUi::find_visible_index(const std::string& path) const {
+    const auto items = visible_items();
+    for (size_t i = 0; i < items.size(); ++i) {
+        if (items[i]->path == path) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
+bool ZeroTagUi::persist_library_state(std::string& error) {
+    if (amiibo::save_library_state(state_path_, state_, error)) {
+        return true;
+    }
+    LOG_WARN("library state: {}", error);
+    return false;
+}
+
+void ZeroTagUi::toggle_favorite(const amiibo::Item& item) {
+    const std::string name = base_name(item.path);
+    const bool now_favorite = state_.toggle_favorite(name);
+    std::string error;
+    if (!persist_library_state(error)) {
+        state_.toggle_favorite(name); // keep the screen and the file in step: undo
+        say(i18n::format(Str::BannerFailed, error.c_str()), true);
+        return;
+    }
+    say(i18n::format(now_favorite ? Str::BannerFavAdded : Str::BannerFavRemoved, name.c_str()));
+}
+
+void ZeroTagUi::record_recent(const std::string& path) {
+    state_.mark_emulated(base_name(path));
+    std::string error;
+    persist_library_state(error); // a failed write only loses the recent order: no banner
+}
+
+void ZeroTagUi::cycle_library_tab() {
+    lib_tab_ = static_cast<LibTab>((static_cast<int>(lib_tab_) + 1) % static_cast<int>(LibTab::Count));
+    lib_sel_ = 0;
+    lib_top_ = 0;
 }
 
 void ZeroTagUi::start() {
@@ -186,6 +365,9 @@ void ZeroTagUi::start() {
 void ZeroTagUi::go(Screen screen) {
     screen_ = screen;
     pending_confirm_ = 0;
+    if (screen == Screen::Scan) {
+        start_scan_if_idle();
+    }
     render();
 }
 
@@ -230,6 +412,11 @@ void ZeroTagUi::delete_item(const amiibo::Item& item) {
     }
     std::error_code ec;
     fs::remove(path, ec);
+    if (!ec) {
+        state_.forget(base_name(path));
+        std::string state_error;
+        persist_library_state(state_error);
+    }
     rescan_library();
     lib_sel_ = std::max(0, std::min(lib_sel_, static_cast<int>(visible_items().size()) - 1));
     say(ec ? std::string(tr(Str::BannerCantDelete)) : i18n::format(Str::BannerDeleted, base_name(path).c_str()),
@@ -297,6 +484,8 @@ void ZeroTagUi::start_emulation(const amiibo::Item& item) {
         emu_error_ = error;
         session_.reset();
         chip_.reset();
+    } else {
+        record_recent(item.path);
     }
     render();
 }
@@ -415,6 +604,14 @@ void ZeroTagUi::tick() {
         dirty = true;
     }
 
+    if (screen_ == Screen::Scan) {
+        // Scan: the worker runs on its own thread; the UI joins it and saves the backup when it is done.
+        if (scan_phase_.load() == ScanPhase::Done) {
+            finish_scan();
+        }
+        dirty = true;
+    }
+
     if (session_) {
         if (!session_->running()) {
             // The worker ended on its own (setup failure or timeout).
@@ -461,6 +658,127 @@ void ZeroTagUi::tick_cb(lv_timer_t* timer) {
 }
 
 // ---------------------------------------------------------------------------
+// Scan (NFC-A reader on the Cap: a real NTAG215 becomes a backup in the library)
+// ---------------------------------------------------------------------------
+
+void ZeroTagUi::start_scan_if_idle() {
+    // A finished scan stays on screen until ESC; a worker still running is not started twice.
+    if (scan_thread_.joinable() || scan_phase_.load() == ScanPhase::Saved) {
+        return;
+    }
+    start_scan();
+}
+
+void ZeroTagUi::start_scan() {
+    scan_stop_ = false;
+    scan_phase_ = ScanPhase::Opening;
+    scan_issue_ = ScanIssue::None;
+    scan_issue_page_ = 0;
+    scan_progress_ = 0;
+    scan_entry_ = nullptr;
+    scan_path_.clear();
+    scan_uid_.clear();
+    {
+        std::lock_guard<std::mutex> lock(scan_mutex_);
+        scan_error_.clear();
+    }
+    scan_thread_ = std::thread([this] { scan_worker(); });
+}
+
+void ZeroTagUi::stop_scan() {
+    scan_stop_ = true;
+    if (scan_thread_.joinable()) {
+        scan_thread_.join();
+    }
+}
+
+void ZeroTagUi::scan_worker() {
+    platform::St25r3916 chip; // powers the Cap on; powered off again when this function returns
+    std::string error;
+    if (!chip.open(error) || !chip.init_nfc_a(error)) { // open() powers the chip; init_nfc_a() makes it a reader
+        {
+            std::lock_guard<std::mutex> lock(scan_mutex_);
+            scan_error_ = error;
+        }
+        scan_phase_ = ScanPhase::Failed;
+        return;
+    }
+    while (!scan_stop_) {
+        scan_phase_ = ScanPhase::Waiting;
+        platform::St25r3916::Tag tag;
+        std::string why;
+        if (!chip.detect_tag(tag, why)) { // REQA/WUPA: nothing in the field yet
+            std::this_thread::sleep_for(std::chrono::milliseconds(120));
+            continue;
+        }
+        scan_phase_ = ScanPhase::Reading;
+        scan_progress_ = 0;
+        scan_issue_ = ScanIssue::None;
+        amiibo::TagImage image{};
+        if (scan_read_tag(chip, scan_progress_, scan_issue_, scan_issue_page_, image)) {
+            {
+                std::lock_guard<std::mutex> lock(scan_mutex_);
+                scan_image_ = image;
+            }
+            scan_phase_ = ScanPhase::Done;
+            return;
+        }
+        // Tag removed or unreadable: back to waiting, the message stays on screen until the next attempt.
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    }
+}
+
+void ZeroTagUi::finish_scan() {
+    if (scan_thread_.joinable()) {
+        scan_thread_.join(); // the worker has just set Done: it is leaving its loop
+    }
+    amiibo::TagImage image{};
+    {
+        std::lock_guard<std::mutex> lock(scan_mutex_);
+        image = scan_image_;
+    }
+    const amiibo::Entry* entry = db_.find(scan_be32(&image[kModelInfoOffset]),
+                                          scan_be32(&image[kModelInfoOffset + 4]));
+    std::error_code ec;
+    fs::create_directories(library_dir_, ec);
+    const std::string stem = scan_stem(entry, image);
+    std::string path;
+    for (int n = 1;; ++n) {
+        const std::string name = n == 1 ? stem : stem + "_" + std::to_string(n);
+        path = (fs::path(library_dir_) / (name + ".bin")).string();
+        if (!fs::exists(path, ec)) {
+            break;
+        }
+    }
+    std::string error;
+    if (!amiibo::Library::write_image(path, image, error)) {
+        {
+            std::lock_guard<std::mutex> lock(scan_mutex_);
+            scan_error_ = error;
+        }
+        scan_phase_ = ScanPhase::Failed;
+        say(i18n::format(Str::BannerSaveFailed, error.c_str()), true);
+        return;
+    }
+    rescan_library();
+    lib_query_.clear();
+    lib_sel_ = 0;
+    lib_top_ = 0;
+    const auto items = visible_items();
+    for (size_t i = 0; i < items.size(); ++i) {
+        if (items[i]->path == path) {
+            lib_sel_ = static_cast<int>(i);
+            lib_top_ = std::max(0, lib_sel_ - kRows + 1);
+        }
+    }
+    scan_entry_ = entry;
+    scan_path_ = path;
+    scan_uid_ = scan_uid_text(image);
+    scan_phase_ = ScanPhase::Saved;
+    say(i18n::format(Str::BannerScanned, base_name(path).c_str()));
+}
+
+// ---------------------------------------------------------------------------
 // Keys
 // ---------------------------------------------------------------------------
 
@@ -494,6 +812,59 @@ void ZeroTagUi::move_selection(int delta, size_t count, int& selected, int& top,
     if (selected >= top + rows) {
         top = selected - rows + 1;
     }
+}
+
+// ---- catalogue facets: keys and state ----
+
+void ZeroTagUi::apply_facet_filter(amiibo::Facet facet, const std::string& value) {
+    filter_facet_ = facet;
+    filter_value_ = value;
+    filter_on_ = true;
+    cat_sel_ = 0;
+    cat_top_ = 0;
+    go(Screen::Catalogue);
+}
+
+void ZeroTagUi::facets_back() {
+    if (facet_stage_ == 1) {
+        facet_stage_ = 0;
+        facet_sel_ = static_cast<int>(facet_index(facet_browse_));
+        facet_top_ = 0;
+        render();
+    } else {
+        go(Screen::Catalogue);
+    }
+}
+
+bool ZeroTagUi::handle_facets_key(uint32_t key) {
+    const std::vector<amiibo::FacetCount> values =
+        facet_stage_ == 1 ? db_.facet_counts(facet_browse_) : std::vector<amiibo::FacetCount>{};
+    const size_t count = facet_stage_ == 0 ? kFacetChoiceCount : values.size();
+    if (key == LV_KEY_UP) {
+        move_selection(-1, count, facet_sel_, facet_top_, kRows);
+    } else if (key == LV_KEY_DOWN) {
+        move_selection(1, count, facet_sel_, facet_top_, kRows);
+    } else if (key == platform::kKeyPageUp) {
+        move_selection(-kRows, count, facet_sel_, facet_top_, kRows);
+    } else if (key == platform::kKeyPageDown) {
+        move_selection(kRows, count, facet_sel_, facet_top_, kRows);
+    } else if (key == LV_KEY_ENTER) {
+        if (facet_stage_ == 0) {
+            if (facet_sel_ < static_cast<int>(kFacetChoiceCount)) {
+                facet_browse_ = kFacetChoices[facet_sel_];
+                facet_stage_ = 1;
+                facet_sel_ = 0;
+                facet_top_ = 0;
+            }
+        } else if (facet_sel_ < static_cast<int>(values.size())) {
+            apply_facet_filter(facet_browse_, values[static_cast<size_t>(facet_sel_)].value);
+            return true;
+        }
+    } else {
+        return false;
+    }
+    render();
+    return true;
 }
 
 bool ZeroTagUi::on_key(uint32_t key, bool long_pressed) {
@@ -570,11 +941,32 @@ bool ZeroTagUi::on_key(uint32_t key, bool long_pressed) {
         } else if (key == '\t') {
             go(Screen::Catalogue);
             return true;
+        } else if (key == platform::kKeyF4) {
+            // Scan a real amiibo: without the Cap, first go through the setup screen (it comes back to the scan).
+            if (!platform::spi_available()) {
+                open_cap_setup(Screen::Scan);
+            } else {
+                go(Screen::Scan);
+            }
+            return true;
         } else if (key == platform::kKeyF1) {
             screen_before_settings_ = Screen::Library;
             check_hardware();
             go(Screen::Settings);
             return true;
+        } else if (key == platform::kKeyF2) {
+            if (lib_sel_ < static_cast<int>(items.size())) {
+                const std::string path = items[static_cast<size_t>(lib_sel_)]->path;
+                toggle_favorite(*items[static_cast<size_t>(lib_sel_)]);
+                // The favourites move to the top: keep the cursor on the same backup.
+                const int index = find_visible_index(path);
+                if (index >= 0) {
+                    lib_sel_ = index;
+                }
+                move_selection(0, visible_items().size(), lib_sel_, lib_top_, kRows);
+            }
+        } else if (key == platform::kKeyF3) {
+            cycle_library_tab();
         } else if (handle_text_key(key, lib_query_)) {
             lib_sel_ = 0;
             lib_top_ = 0;
@@ -606,6 +998,12 @@ bool ZeroTagUi::on_key(uint32_t key, bool long_pressed) {
             screen_before_settings_ = Screen::Catalogue;
             check_hardware();
             go(Screen::Settings);
+            return true;
+        } else if (key == platform::kKeyF2) {
+            facet_stage_ = 0;
+            facet_sel_ = static_cast<int>(facet_index(facet_browse_));
+            facet_top_ = 0;
+            go(Screen::Facets);
             return true;
         } else if (handle_text_key(key, cat_query_)) {
             cat_sel_ = 0;
@@ -640,6 +1038,9 @@ bool ZeroTagUi::on_key(uint32_t key, bool long_pressed) {
             }
         } else if (key == 'u') {
             toggle_rotation();
+        } else if (key == platform::kKeyF2) {
+            toggle_favorite(*item);
+            render();
         } else if (key == LV_KEY_DEL) {
             if (pending_confirm_ == 2) {
                 pending_confirm_ = 0;
@@ -654,7 +1055,10 @@ bool ZeroTagUi::on_key(uint32_t key, bool long_pressed) {
         }
         return true;
     }
+    case Screen::Facets:
+        return handle_facets_key(key);
     case Screen::Emulating:
+    case Screen::Scan: // keys ignored here: ESC leaves (on release)
         return true;
     case Screen::Settings:
         if (key == LV_KEY_UP) {
@@ -736,9 +1140,17 @@ void ZeroTagUi::on_key_release(uint32_t key) {
             cat_sel_ = 0;
             cat_top_ = 0;
             render();
+        } else if (filter_on_) {
+            filter_on_ = false;
+            cat_sel_ = 0;
+            cat_top_ = 0;
+            render();
         } else {
             go(Screen::Library);
         }
+        break;
+    case Screen::Facets:
+        facets_back();
         break;
     case Screen::Detail:
         go(Screen::Library);
@@ -752,6 +1164,11 @@ void ZeroTagUi::on_key_release(uint32_t key) {
         break;
     case Screen::Help:
         go(screen_before_help_);
+        break;
+    case Screen::Scan:
+        stop_scan();
+        scan_phase_ = ScanPhase::Opening; // the next scan starts from scratch
+        go(Screen::Library);
         break;
     case Screen::CapSetup:
         if (!cap_busy_) {
@@ -899,27 +1316,42 @@ void ZeroTagUi::button(int x, int y, int w, const std::string& label, lv_color_t
 }
 
 void ZeroTagUi::search_field(lv_obj_t* parent, const std::string& query, const std::string& placeholder,
-                             bool focused) {
-    lv_obj_t* f = box(parent, 10, 26, 172, 16, pal_.button, 2, focused ? pal_.accent : pal_.cream, 0);
+                             bool focused, int width) {
+    lv_obj_t* f = box(parent, 10, 26, width, 16, pal_.button, 2, focused ? pal_.accent : pal_.cream, 0);
     if (query.empty()) {
-        text(f, placeholder, font(10), dim_, 3, 0, 160);
+        text(f, placeholder, font(10), dim_, 3, 0, width - 12);
     } else {
-        text(f, query + "_", font(10), pal_.text, 3, 0, 160);
+        text(f, query + "_", font(10), pal_.text, 3, 0, width - 12);
+    }
+}
+
+void ZeroTagUi::pixel_star(int x, int y, lv_color_t color) {
+    // 7x7 five-point star, one pixel per cell.
+    static const char* const rows[7] = {"...X...", "...X...", "XXXXXXX", ".XXXXX.", "..XXX..", ".XX.XX.", "XX...XX"};
+    for (int r = 0; r < 7; ++r) {
+        for (int c = 0; c < 7; ++c) {
+            if (rows[r][c] == 'X') {
+                box(root_, x + c, y + r, 1, 1, color, 0);
+            }
+        }
     }
 }
 
 void ZeroTagUi::list_row(int y, bool selected, const amiibo::Entry* entry, const std::string& name,
-                         const std::string& sub, const std::string& badge) {
+                         const std::string& sub, const std::string& badge, bool favorite) {
     if (selected) {
         box(root_, kInset + 1, y, kListW - kInset - 3, kRowH - 2, lv_color_hex(0x2a1417), 0);
         cursor(kInset + 4, y + 8);
     }
     thumb(root_, entry, 20, y + 2, 20);
-    const int tw = kListW - 36 - (badge.empty() ? 8 : 50);
+    const int tw = kListW - 36 - (badge.empty() ? (favorite ? 20 : 8) : 50);
     text(root_, name, font(11, selected), pal_.text, 36, y + 2, tw);
     text(root_, sub, font(9), dim_, 36, y + 14, kListW - 44);
     if (!badge.empty()) {
         text(root_, badge, font(9), pal_.primary, kListW - 50, y + 4, 44);
+    }
+    if (favorite) {
+        pixel_star(kListW - 16, y + 4, pal_.primary);
     }
 }
 
@@ -990,6 +1422,9 @@ void ZeroTagUi::render() {
     case Screen::Catalogue:
         render_catalogue();
         break;
+    case Screen::Facets:
+        render_facets();
+        break;
     case Screen::Detail:
         render_detail();
         break;
@@ -1005,6 +1440,9 @@ void ZeroTagUi::render() {
     case Screen::CapSetup:
         render_cap_setup();
         break;
+    case Screen::Scan:
+        render_scan();
+        break;
     }
     draw_frame();
 }
@@ -1012,12 +1450,25 @@ void ZeroTagUi::render() {
 void ZeroTagUi::render_library() {
     const auto items = visible_items();
     render_bar("ZEROTAG", std::string(tr(Str::LibraryTitle)) + " - " + std::to_string(library_.items().size()));
-    search_field(root_, lib_query_, tr(Str::FilterPlaceholder), !lib_query_.empty());
+    search_field(root_, lib_query_, tr(Str::FilterPlaceholder), !lib_query_.empty(), 108);
+    // Tab chip (F3): Tous / Favoris / Récents
+    const bool tab_active = lib_tab_ != LibTab::All;
+    lv_obj_t* tab_chip = box(root_, 122, 26, 60, 16, pal_.button, 2, tab_active ? pal_.primary : pal_.cream, 0);
+    const char* tab_label = lib_tab_ == LibTab::Favorites ? tr(Str::TabFavorites)
+                            : lib_tab_ == LibTab::Recent  ? tr(Str::TabRecent)
+                                                          : tr(Str::TabAll);
+    lv_obj_t* tab_text = text(tab_chip, tab_label, font(9, tab_active), tab_active ? pal_.primary : pal_.text, 0, 0,
+                              54);
+    lv_obj_align(tab_text, LV_ALIGN_CENTER, 0, 0);
     box(root_, kListW, kContentTop + 2, 2, kFootTop - kContentTop - 2, pal_.border, 0);
 
     if (items.empty()) {
         std::string line1 = library_.items().empty() ? tr(Str::LibraryEmpty) : tr(Str::NoResult);
         std::string line2 = !keys_ok_ ? tr(Str::KeysMissingF1) : tr(Str::LibraryHowTo);
+        if (!library_.items().empty() && lib_query_.empty() && tab_active) {
+            line1 = tr(lib_tab_ == LibTab::Favorites ? Str::EmptyFavorites : Str::EmptyRecent);
+            line2.clear();
+        }
         text(root_, line1, font(10), pal_.text, 12, 64, kListW - 24, true);
         text(root_, line2, font(9), dim_, 12, 86, kListW - 24, true);
     }
@@ -1030,16 +1481,22 @@ void ZeroTagUi::render_library() {
         }
         const amiibo::Item& item = *items[static_cast<size_t>(idx)];
         list_row(kListTop + row * kRowH, idx == lib_sel_, item.entry, item_name(item),
-                 item.entry ? item.entry->amiibo_series : item.uid, "");
+                 item.entry ? item.entry->amiibo_series : item.uid, "",
+                 state_.is_favorite(base_name(item.path)));
     }
     scrollbar(items.size(), first);
 
     if (lib_sel_ < static_cast<int>(items.size())) {
         const amiibo::Item& item = *items[static_cast<size_t>(lib_sel_)];
         const int px = kListW + 8;
+        const bool favorite = state_.is_favorite(base_name(item.path));
         box(root_, px, 26, 36, 62, pal_.surface, 2, pal_.cream, 0);
         thumb(root_, item.entry, px + 2 + 2, 30, 54);
-        text(root_, item_name(item), font(11, true), pal_.text, px + 42, 26, kScreenW - px - 42 - 8, true);
+        text(root_, item_name(item), font(11, true), pal_.text, px + 42, 26, kScreenW - px - 42 - 8 - (favorite ? 10 : 0),
+             true);
+        if (favorite) {
+            pixel_star(kScreenW - kInset - 9, 27, pal_.primary);
+        }
         const int tw = kScreenW - px - 8;
         if (item.entry) {
             text(root_, item.entry->amiibo_series, font(9), dim_, px, 92, tw);
@@ -1059,7 +1516,12 @@ void ZeroTagUi::render_library() {
 
 void ZeroTagUi::render_catalogue() {
     const auto entries = visible_entries();
-    render_bar(tr(Str::CatalogueTitle), std::to_string(entries.size()) + " / " + std::to_string(db_.entries().size()));
+    // Count first: the subtitle is cut at the right when the facet value is long.
+    std::string subtitle = std::to_string(entries.size()) + " / " + std::to_string(db_.entries().size());
+    if (filter_on_) {
+        subtitle += "  " + i18n::format(Str::FacetChip, facet_label(filter_facet_), filter_value_.c_str());
+    }
+    render_bar(tr(Str::CatalogueTitle), subtitle);
     search_field(root_, cat_query_, tr(Str::SearchPlaceholder), true);
     box(root_, kListW, kContentTop + 2, 2, kFootTop - kContentTop - 2, pal_.border, 0);
 
@@ -1115,7 +1577,74 @@ void ZeroTagUi::render_catalogue() {
     render_footer({{tr(Str::KeyUpDown), tr(Str::HintChoose)},
                    {tr(Str::KeyEnter), tr(Str::HintCreate)},
                    {tr(Str::KeyTab), tr(Str::HintLibrary)},
-                   {"F1", tr(Str::HintSettings)}});
+                   {"F2", tr(Str::HintFilter)}});
+}
+
+// ---- catalogue facets: screen ----
+
+void ZeroTagUi::facet_row(int y, bool selected, const std::string& title, const std::string& right) {
+    if (selected) {
+        box(root_, kInset + 1, y, kInnerW - 10, 28, lv_color_hex(0x2a1417), 0);
+        cursor(kInset + 4, y + 10);
+    }
+    text(root_, title, font(11, selected), pal_.text, 24, y + 8, right.empty() ? kInnerW - 40 : 190);
+    if (!right.empty()) {
+        lv_obj_t* v = text(root_, right, font(11, true), pal_.primary, 0, 0);
+        lv_obj_align(v, LV_ALIGN_TOP_RIGHT, -(kInset + 8), y + 8);
+    }
+}
+
+void ZeroTagUi::render_facets() {
+    if (facet_stage_ == 0) {
+        render_bar(tr(Str::FacetsTitle), "");
+    } else {
+        render_bar(tr(Str::FacetsTitle), facet_label(facet_browse_));
+    }
+    // Same geometry as the settings rows: 4 rows of 30 px, a thin bar on the right edge when the list is longer.
+    constexpr int rh = 30;
+    auto edge_bar = [&](size_t count, int first) {
+        if (count <= static_cast<size_t>(kRows)) {
+            return;
+        }
+        const int track = kRows * rh;
+        const int bar_h = track * kRows / static_cast<int>(count);
+        const int bar_y = kContentTop + 3 + (track - bar_h) * first / static_cast<int>(count - kRows);
+        box(root_, kScreenW - kInset - 4, bar_y, 2, bar_h, pal_.border, 0);
+    };
+
+    if (facet_stage_ == 0) {
+        for (int slot = 0; slot < kRows && slot < static_cast<int>(kFacetChoiceCount); ++slot) {
+            const int i = facet_top_ + slot;
+            if (i >= static_cast<int>(kFacetChoiceCount)) {
+                break;
+            }
+            const amiibo::Facet facet = kFacetChoices[i];
+            const auto values = db_.facet_counts(facet);
+            facet_row(kContentTop + 3 + slot * rh, i == facet_sel_, facet_label(facet),
+                      i18n::format(Str::FacetValuesCount, values.size()));
+        }
+        render_footer({{tr(Str::KeyUpDown), tr(Str::HintChoose)},
+                       {tr(Str::KeyEnter), tr(Str::HintOpen)},
+                       {tr(Str::KeyEsc), tr(Str::HintBack)}});
+        return;
+    }
+
+    const auto values = db_.facet_counts(facet_browse_);
+    if (values.empty()) {
+        text(root_, tr(Str::NoResult), font(10), pal_.text, 12, kContentTop + 12, kScreenW - 24);
+    }
+    for (int slot = 0; slot < kRows; ++slot) {
+        const int i = facet_top_ + slot;
+        if (i >= static_cast<int>(values.size())) {
+            break;
+        }
+        const auto& fc = values[static_cast<size_t>(i)];
+        facet_row(kContentTop + 3 + slot * rh, i == facet_sel_, fc.value, std::to_string(fc.count));
+    }
+    edge_bar(values.size(), facet_top_);
+    render_footer({{tr(Str::KeyUpDown), tr(Str::HintChoose)},
+                   {tr(Str::KeyEnter), tr(Str::HintFilter)},
+                   {tr(Str::KeyEsc), tr(Str::HintBack)}});
 }
 
 void ZeroTagUi::render_detail() {
@@ -1137,7 +1666,11 @@ void ZeroTagUi::render_detail() {
 
     const int x = 106;
     const int w = kScreenW - x - 10;
-    text(root_, item_name(*item), font(14, true), pal_.text, x, 25, w);
+    const bool favorite = state_.is_favorite(base_name(item->path));
+    text(root_, item_name(*item), font(14, true), pal_.text, x, 25, w - (favorite ? 14 : 0));
+    if (favorite) {
+        pixel_star(x + w - 7, 27, pal_.primary);
+    }
     const std::string sub =
         item->entry ? item->entry->game_series + " - " + item->entry->type : std::string(tr(Str::UnknownCharacter));
     text(root_, sub, font(9), dim_, x, 44, w);
@@ -1332,11 +1865,16 @@ void ZeroTagUi::render_help() {
     case Screen::Catalogue:
         lines = {{tr(Str::KeyUpDown), tr(Str::HelpChoose)}, {"a-z", tr(Str::HelpTypeSearch)},
                  {tr(Str::KeyEnter), tr(Str::HelpCreate)}, {tr(Str::KeyTab), tr(Str::HelpToLibrary)},
-                 {tr(Str::KeyEsc), tr(Str::HelpClearBack)}};
+                 {"F2", tr(Str::HelpFilter)}, {tr(Str::KeyEsc), tr(Str::HelpClearBack)}};
+        break;
+    case Screen::Facets:
+        lines = {{tr(Str::KeyUpDown), tr(Str::HelpChoose)}, {tr(Str::KeyEnter), tr(Str::HelpFacetPick)},
+                 {tr(Str::KeyEsc), tr(Str::HelpBack)}};
         break;
     case Screen::Detail:
         lines = {{tr(Str::KeyEnter), tr(Str::HelpEmulate)}, {"R", tr(Str::HelpNewUid)}, {"U", tr(Str::HelpRotation)},
-                 {tr(Str::KeyDel), tr(Str::HelpDelete)}, {tr(Str::KeyEsc), tr(Str::HelpBack)}};
+                 {tr(Str::KeyDel), tr(Str::HelpDelete)}, {tr(Str::KeyEsc), tr(Str::HelpBack)},
+                 {"F2", tr(Str::HintFavorite)}};
         break;
     case Screen::Emulating:
         lines = {{tr(Str::KeyEsc), tr(Str::HelpStopSave)}, {"", tr(Str::HelpAutosave)}};
@@ -1348,7 +1886,8 @@ void ZeroTagUi::render_help() {
     default:
         lines = {{tr(Str::KeyUpDown), tr(Str::HelpChoose)}, {tr(Str::KeyEnter), tr(Str::HelpOpen)},
                  {"a-z", tr(Str::HelpTypeFilter)}, {tr(Str::KeyTab), tr(Str::HelpToCatalogue)},
-                 {"F1", tr(Str::HelpSettings)}, {tr(Str::KeyEsc), tr(Str::HelpHoldQuit)}};
+                 {"F1", tr(Str::HelpSettings)}, {"F4", tr(Str::HelpScan)},
+                 {tr(Str::KeyEsc), tr(Str::HelpHoldQuit)}, {"F2", tr(Str::HelpFavTabs)}};
         break;
     }
     int y = kContentTop + 6;
@@ -1384,6 +1923,82 @@ void ZeroTagUi::render_cap_setup() {
         text(root_, cap_message_, font(10), pal_.error, 14, 124, kScreenW - 28, true);
     }
     render_footer({{tr(Str::KeyEnter), tr(Str::HintValidate)}, {tr(Str::KeyEsc), tr(Str::HintSkip)}});
+}
+
+void ZeroTagUi::render_scan() {
+    const ScanPhase phase = scan_phase_.load();
+    const bool reading = phase == ScanPhase::Reading || phase == ScanPhase::Done;
+    const bool saved = phase == ScanPhase::Saved;
+    render_bar(tr(Str::ScanTitle), "NTAG215");
+
+    // Rings as on the emulation screen: red while the figure is read, gold once it is saved.
+    const int cx = 68, cy = 86;
+    box(root_, cx - 56, cy - 56, 112, 112, pal_.background, 2, reading ? pal_.accent : pal_.dark_red, 56);
+    const lv_color_t inner_ring = saved ? pal_.primary : (reading ? pal_.accent : pal_.dark_red);
+    box(root_, cx - 44, cy - 44, 88, 88, pal_.background, 2, inner_ring, 44);
+    box(root_, cx - 28, cy - 28, 56, 56, pal_.surface, 2, pal_.cream, 28);
+    if (saved && scan_entry_) {
+        thumb(root_, scan_entry_, cx - 14, cy - 22, 46);
+    } else {
+        triforce(cx - 9, cy - 4);
+    }
+
+    const int x = 138;
+    const int w = kScreenW - x - 10;
+    switch (phase) {
+    case ScanPhase::Opening:
+        text(root_, tr(Str::ScanOpening), font(12, true), pal_.text, x, 28, w, true);
+        break;
+    case ScanPhase::Waiting: {
+        text(root_, tr(Str::ScanWaiting), font(12, true), pal_.text, x, 28, w, true);
+        text(root_, tr(Str::ScanWaitHelp), font(9), dim_, x, 46, w, true);
+        const ScanIssue issue = scan_issue_.load();
+        if (issue == ScanIssue::NotNtag215) {
+            text(root_, tr(Str::ScanNotNtag), font(9), pal_.error, x, 92, w, true);
+        } else if (issue == ScanIssue::Interrupted) {
+            text(root_, i18n::format(Str::ScanReadFailed, scan_issue_page_.load()), font(9), pal_.error, x, 92, w,
+                 true);
+        }
+        break;
+    }
+    case ScanPhase::Reading:
+    case ScanPhase::Done: {
+        const int progress = scan_progress_.load();
+        text(root_, tr(Str::ScanReading), font(12, true), pal_.warning, x, 28, w, true);
+        box(root_, x, 60, w, 8, pal_.button, 2, pal_.border, 0);
+        const int inner = w - 4;
+        if (progress > 0) {
+            box(root_, x + 2, 62, inner * progress / kNtagPages, 4, pal_.primary, 0);
+        }
+        text(root_, i18n::format(Str::ScanProgress, progress, kNtagPages), font(9), pal_.text, x, 74, w);
+        text(root_, tr(Str::ScanKeepHelp), font(9), dim_, x, 90, w, true);
+        break;
+    }
+    case ScanPhase::Saved:
+        text(root_, tr(Str::ScanSaved), font(12, true), pal_.primary, x, 28, w, true);
+        text(root_, scan_entry_ ? scan_entry_->name : std::string(tr(Str::UnknownCharacter)), font(11, true),
+             pal_.text, x, 48, w);
+        text(root_, base_name(scan_path_), font(9), dim_, x, 66, w);
+        text(root_, "UID " + scan_uid_, font(9), pal_.text, x, 80, w);
+        break;
+    case ScanPhase::Failed: {
+        std::string message;
+        {
+            std::lock_guard<std::mutex> lock(scan_mutex_);
+            message = scan_error_;
+        }
+        text(root_, tr(Str::ScanFailed), font(12, true), pal_.error, x, 28, w, true);
+        text(root_, clip(message, 90), font(9), pal_.text, x, 48, w, true);
+        const bool overlay = message.find("spidev") != std::string::npos ||
+                             message.find("No such file") != std::string::npos;
+        const bool perms = message.find("Permission") != std::string::npos ||
+                           message.find("denied") != std::string::npos || message.find("GPIO") != std::string::npos;
+        text(root_, overlay ? tr(Str::ErrSpi) : (perms ? tr(Str::ErrPerms) : tr(Str::ErrGeneric)), font(9), dim_, x,
+             92, w, true);
+        break;
+    }
+    }
+    render_footer({{tr(Str::KeyEsc), tr(Str::HintBack)}});
 }
 
 } // namespace app

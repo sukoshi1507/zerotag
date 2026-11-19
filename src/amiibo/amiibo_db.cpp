@@ -264,20 +264,66 @@ const Entry* Database::find(uint32_t head, uint32_t tail) const {
     return nullptr;
 }
 
-std::vector<const Entry*> Database::search(const std::string& query) const {
+namespace {
+
+std::vector<std::string> words_of(const std::string& query) {
     std::vector<std::string> words;
-    {
-        std::stringstream ss(lower(query));
-        std::string w;
-        while (ss >> w) words.push_back(w);
+    std::stringstream ss(lower(query));
+    std::string w;
+    while (ss >> w) words.push_back(w);
+    return words;
+}
+
+bool matches(const Entry& e, const std::vector<std::string>& words) {
+    const std::string haystack = lower(e.name + '\n' + e.character + '\n' + e.game_series + '\n' + e.amiibo_series);
+    return std::all_of(words.begin(), words.end(), [&](const std::string& w) {
+        return haystack.find(w) != std::string::npos;
+    });
+}
+
+const std::string& facet_value(const Entry& e, Facet facet) {
+    switch (facet) {
+    case Facet::AmiiboSeries: return e.amiibo_series;
+    case Facet::Game: return e.game_series;
+    case Facet::Type: return e.type;
     }
+    return e.type;
+}
+
+} // namespace
+
+std::vector<const Entry*> Database::search(const std::string& query) const {
+    const auto words = words_of(query);
     std::vector<const Entry*> result;
     for (const auto& e : entries_) {
-        const std::string haystack = lower(e.name + '\n' + e.character + '\n' + e.game_series + '\n' + e.amiibo_series);
-        const bool all = std::all_of(words.begin(), words.end(), [&](const std::string& w) {
-            return haystack.find(w) != std::string::npos;
-        });
-        if (all) result.push_back(&e);
+        if (matches(e, words)) result.push_back(&e);
+    }
+    return result;
+}
+
+std::vector<FacetCount> Database::facet_counts(Facet facet) const {
+    // Keyed by the lower-cased value: "Mario" and "mario" are the same facet value; the first spelling is shown.
+    std::map<std::string, FacetCount> by_key;
+    for (const auto& e : entries_) {
+        const std::string& value = facet_value(e, facet);
+        if (value.empty()) continue;
+        FacetCount& fc = by_key[lower(value)];
+        if (fc.value.empty()) fc.value = value;
+        ++fc.count;
+    }
+    std::vector<FacetCount> out;
+    out.reserve(by_key.size());
+    for (auto& kv : by_key) out.push_back(std::move(kv.second));
+    return out;
+}
+
+std::vector<const Entry*> Database::search_in(Facet facet, const std::string& value, const std::string& query) const {
+    const std::string wanted = lower(value);
+    const auto words = words_of(query);
+    std::vector<const Entry*> result;
+    if (wanted.empty()) return result;
+    for (const auto& e : entries_) {
+        if (lower(facet_value(e, facet)) == wanted && matches(e, words)) result.push_back(&e);
     }
     return result;
 }

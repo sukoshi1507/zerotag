@@ -10,15 +10,19 @@
 #include "amiibo_db.h"
 #include "amiibo_library.h"
 #include "asset_manager.h"
+#include "library_state.h"
 #include "emulation_session.h"
 #include "lvgl.h"
 #include "st25r3916.h"
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <utility>
 
 namespace app {
@@ -31,6 +35,10 @@ struct UiPalette {
     lv_color_t primary; // gold: positive state, highlights
     lv_color_t warning, error, info;
 };
+
+// Phases of the scan screen (worker thread -> UI thread) and the last problem met while reading.
+enum class ScanPhase { Opening, Waiting, Reading, Done, Saved, Failed };
+enum class ScanIssue { None, NotNtag215, Interrupted };
 
 class ZeroTagUi {
 public:
@@ -49,7 +57,9 @@ public:
     void on_key_release(uint32_t key);
 
 private:
-    enum class Screen { Library, Catalogue, Detail, Emulating, Settings, Help, CapSetup };
+    enum class Screen { Library, Catalogue, Facets, Detail, Emulating, Settings, Help, CapSetup, Scan };
+    // Library tabs (F3 cycles): all backups (favourites first), favourites only, recently emulated.
+    enum class LibTab { All = 0, Favorites = 1, Recent = 2, Count = 3 };
 
     // ---- data ----
     void load_data();
@@ -57,8 +67,18 @@ private:
     std::vector<const amiibo::Item*> visible_items() const;
     std::vector<const amiibo::Entry*> visible_entries() const;
     static std::string item_name(const amiibo::Item& item);
+    // ---- catalogue facets (browse by series / game / type) ----
+    void apply_facet_filter(amiibo::Facet facet, const std::string& value);
+    bool handle_facets_key(uint32_t key);
+    void facets_back();
     static std::string base_name(const std::string& path);
     static std::string home_dir();
+    // favourites and recent list (F2 / emulation start)
+    void toggle_favorite(const amiibo::Item& item);
+    void record_recent(const std::string& path);
+    bool persist_library_state(std::string& error);
+    void cycle_library_tab();
+    int find_visible_index(const std::string& path) const;
 
     // ---- actions ----
     void go(Screen screen);
@@ -75,6 +95,13 @@ private:
     void open_cap_setup(Screen after);
     void submit_cap_setup();
 
+    // ---- scan: reads a real NTAG215 into the library (F2 from the library)
+    void start_scan_if_idle();
+    void start_scan();
+    void stop_scan();
+    void scan_worker();
+    void finish_scan(); // UI thread: joins the worker, writes the backup, rescans the library
+
     bool handle_text_key(uint32_t key, std::string& query);
     void move_selection(int delta, size_t count, int& selected, int& top, int rows);
 
@@ -84,20 +111,25 @@ private:
     void render_footer(const std::vector<std::pair<std::string, std::string>>& hints);
     void render_library();
     void render_catalogue();
+    void render_facets(); // ---- catalogue facets ----
+    void facet_row(int y, bool selected, const std::string& title, const std::string& right);
     void render_detail();
     void render_emulating();
     void render_settings();
     void render_help();
     void render_cap_setup();
+    void render_scan();
 
     lv_obj_t* box(lv_obj_t* parent, int x, int y, int w, int h, lv_color_t fill, int border_w = 0,
                   lv_color_t border = lv_color_black(), int radius = 0);
     lv_obj_t* text(lv_obj_t* parent, const std::string& value, const lv_font_t* font, lv_color_t color, int x,
                    int y, int w = 0, bool wrap = false);
     lv_obj_t* thumb(lv_obj_t* parent, const amiibo::Entry* entry, int x, int y, int h);
-    void search_field(lv_obj_t* parent, const std::string& query, const std::string& placeholder, bool focused);
+    void search_field(lv_obj_t* parent, const std::string& query, const std::string& placeholder, bool focused,
+                      int width = 172);
     void list_row(int y, bool selected, const amiibo::Entry* entry, const std::string& name, const std::string& sub,
-                  const std::string& badge);
+                  const std::string& badge, bool favorite = false);
+    void pixel_star(int x, int y, lv_color_t color);
     void scrollbar(size_t count, int first);
     void triforce(int x, int y);
     void cursor(int x, int y);
@@ -123,6 +155,7 @@ private:
     std::string images_dir_;
     std::string library_dir_;
     std::string keys_path_;
+    std::string state_path_; // favourites and recent list, ~/.zerotag/library_state.txt
 
     // data
     amiibo::Database db_;
@@ -134,6 +167,8 @@ private:
     std::unique_ptr<amiibo::Keys> keys_;
     bool keys_ok_{false};
     std::string keys_error_;
+    amiibo::LibraryState state_;
+    LibTab lib_tab_{LibTab::All};
 
     // ui state
     Screen screen_{Screen::Library};
@@ -144,6 +179,15 @@ private:
     int lib_top_{0};
     int cat_sel_{0};
     int cat_top_{0};
+    // catalogue facets: the Facets screen browses a facet (stage 0 picks it, stage 1 picks a value) and a
+    // chosen value restricts the catalogue, combined with cat_query_
+    int facet_stage_{0};
+    amiibo::Facet facet_browse_{amiibo::Facet::AmiiboSeries};
+    int facet_sel_{0};
+    int facet_top_{0};
+    bool filter_on_{false};
+    amiibo::Facet filter_facet_{amiibo::Facet::AmiiboSeries};
+    std::string filter_value_;
     std::string current_path_; // the item shown in Detail / emulated
     std::string banner_;
     bool banner_error_{false};
@@ -171,6 +215,20 @@ private:
     std::string emu_error_;
     uint32_t emu_started_{0};
     uint32_t last_stats_key_{0};
+
+    // scan: the worker thread only touches the atomics and scan_image_/scan_error_ (under scan_mutex_)
+    std::thread scan_thread_;
+    std::mutex scan_mutex_;
+    std::atomic<bool> scan_stop_{false};
+    std::atomic<ScanPhase> scan_phase_{ScanPhase::Opening};
+    std::atomic<ScanIssue> scan_issue_{ScanIssue::None};
+    std::atomic<int> scan_issue_page_{0};
+    std::atomic<int> scan_progress_{0};
+    std::string scan_error_;        // why the chip could not be opened or the backup not written
+    amiibo::TagImage scan_image_{}; // the image read by the worker, valid once the phase is Done
+    const amiibo::Entry* scan_entry_{nullptr};
+    std::string scan_path_;
+    std::string scan_uid_;
 };
 
 } // namespace app
