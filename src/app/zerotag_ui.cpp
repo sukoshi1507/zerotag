@@ -922,8 +922,11 @@ void ZeroTagUi::render_emulating() {
         const bool perms = emu_error_.find("Permission") != std::string::npos ||
                            emu_error_.find("denied") != std::string::npos || emu_error_.find("open") != std::string::npos ||
                            emu_error_.find("GPIO") != std::string::npos;
-        text(root_, perms ? "Droits insuffisants : le Cap demande root (voir F1 dans la bibliotheque)."
-                          : "Verifie le Cap et relance (F1 : etat).",
+        const bool overlay = emu_error_.find("spidev") != std::string::npos ||
+                             emu_error_.find("No such file") != std::string::npos;
+        text(root_, overlay ? "Port SPI absent : redemarre l'appareil (service zerotag-spi)."
+                            : (perms ? "Droits insuffisants sur le Cap (groupes spi et gpio)."
+                                     : "Verifie le Cap et relance (F1 : etat)."),
              font(9), dim_, x, 88, w, true);
     } else {
         text(root_, selected ? "Lecteur connecte" : (field ? "Lecteur detecte..." : "En attente d'un lecteur..."),

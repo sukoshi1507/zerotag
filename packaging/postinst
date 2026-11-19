@@ -1,0 +1,8 @@
+#!/bin/sh
+set -e
+if [ "$1" = "configure" ] && [ -d /run/systemd/system ]; then
+    systemctl daemon-reload || true
+    systemctl enable zerotag-spi.service || true
+    systemctl start zerotag-spi.service || true
+fi
+exit 0

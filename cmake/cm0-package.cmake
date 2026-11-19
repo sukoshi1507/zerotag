@@ -70,6 +70,14 @@ if(APP_INSTALL_SYSTEMD_SERVICE)
     )
 endif()
 
+# Boot-time loader for the SPI overlay used by the Cap (enabled by the package's postinst)
+install(PROGRAMS "${CMAKE_CURRENT_SOURCE_DIR}/packaging/load-spi-overlay.sh"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/zerotag"
+)
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/packaging/zerotag-spi.service"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/systemd/system"
+)
+
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/README.md"
     DESTINATION "${CMAKE_INSTALL_DOCDIR}"
 )
@@ -111,6 +119,10 @@ configure_file(
     "${APP_GENERATED_DIR}/conffiles"
     @ONLY
 )
-set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${APP_GENERATED_DIR}/conffiles")
+set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
+    "${APP_GENERATED_DIR}/conffiles"
+    "${CMAKE_CURRENT_SOURCE_DIR}/packaging/postinst"
+    "${CMAKE_CURRENT_SOURCE_DIR}/packaging/prerm"
+)
 
 include(CPack)

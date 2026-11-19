@@ -1,0 +1,11 @@
+[Unit]
+Description=Load the SPI overlay for the ZeroTag NFC Cap
+After=local-fs.target systemd-udevd.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/zerotag/load-spi-overlay.sh
+
+[Install]
+WantedBy=multi-user.target
