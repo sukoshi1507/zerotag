@@ -23,6 +23,17 @@
             }
         },
         {
+            "name": "cp0-cross-clang",
+            "displayName": "CardputerZero Cross Build (clang)",
+            "description": "Cross build with the host clang against the BSP sysroot: no container, no mixed GCC headers",
+            "inherits": [
+                "cp0-cross"
+            ],
+            "cacheVariables": {
+                "CM0_USE_CLANG": "ON"
+            }
+        },
+        {
             "name": "cp0-native",
             "displayName": "CardputerZero Native Build",
             "description": "Configure native build for CardputerZero with Ninja Multi-Config",
