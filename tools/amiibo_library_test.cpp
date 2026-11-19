@@ -11,6 +11,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 
@@ -60,6 +61,7 @@ int main(int argc, char** argv) {
 
     amiibo::Keys keys;
     check(keys.load(argv[2], error), "keys load");
+    const amiibo::Keys* keys_ptr = &keys;
 
     const fs::path tmp = fs::temp_directory_path() / ("zerotag_lib_test_" + std::to_string(::getpid()));
     fs::create_directories(tmp);
@@ -91,6 +93,27 @@ int main(int argc, char** argv) {
     struct stat st {};
     check(::stat(item.path.c_str(), &st) == 0 && (st.st_mode & 0777) == 0600, "mode is 0600");
     check(!fs::exists(item.path + ".tmp"), "no temporary file left");
+
+    // UID rotation keeps the data and the identity, changes the UID, and the result still verifies.
+    {
+        amiibo::TagImage before;
+        check(amiibo::generate(*keys_ptr, 0x01010000, 0x000e0002, before, error), "fresh image for the rotation test");
+        amiibo::TagImage rotated = before;
+        check(amiibo::rotate_uid(*keys_ptr, rotated, error), "rotate_uid succeeds");
+        uint32_t h = 0, t = 0;
+        check(amiibo::verify(*keys_ptr, rotated, h, t) && h == 0x01010000 && t == 0x000e0002,
+              "rotated image verifies, same character");
+        check(std::memcmp(before.data(), rotated.data(), 9) != 0, "the UID changed");
+        check(rotated[0] == 0x04 && rotated[3] == static_cast<uint8_t>(0x88 ^ rotated[0] ^ rotated[1] ^ rotated[2]) &&
+                  rotated[8] == static_cast<uint8_t>(rotated[4] ^ rotated[5] ^ rotated[6] ^ rotated[7]),
+              "BCC bytes are consistent");
+        check(rotated[0x218] == 0x80 && rotated[0x219] == 0x80, "PACK kept");
+        // the user data region is the same after a decrypt/encrypt cycle: rotate twice and compare plain-visible fields
+        amiibo::TagImage twice = rotated;
+        check(amiibo::rotate_uid(*keys_ptr, twice, error) && amiibo::verify(*keys_ptr, twice, h, t), "rotates twice");
+        amiibo::TagImage garbage{};
+        check(!amiibo::rotate_uid(*keys_ptr, garbage, error), "an unverifiable image is refused");
+    }
 
     // A modified payload no longer verifies, but the character is still identified.
     amiibo::Library lib4;

@@ -150,6 +150,47 @@ bool generate(const Keys& keys, uint32_t head, uint32_t tail, TagImage& out, std
     return true;
 }
 
+bool rotate_uid(const Keys& keys, TagImage& image, std::string& error) {
+    if (!keys.loaded()) {
+        error = "keys not loaded";
+        return false;
+    }
+    uint8_t plain[kPlainSize] = {};
+    if (!nfc3d_amiibo_unpack(&keys.impl_->keys, image.data(), plain)) {
+        error = "the image does not verify with these keys";
+        return false;
+    }
+
+    std::random_device rng;
+    uint8_t uid[7];
+    uid[0] = 0x04; // NXP manufacturer byte
+    for (int i = 1; i < 7; ++i) {
+        uid[i] = static_cast<uint8_t>(rng());
+    }
+    const uint8_t bcc0 = static_cast<uint8_t>(0x88 ^ uid[0] ^ uid[1] ^ uid[2]);
+    const uint8_t bcc1 = static_cast<uint8_t>(uid[3] ^ uid[4] ^ uid[5] ^ uid[6]);
+    plain[kPlainUid + 0] = uid[0];
+    plain[kPlainUid + 1] = uid[1];
+    plain[kPlainUid + 2] = uid[2];
+    plain[kPlainUid + 3] = bcc0;
+    std::memcpy(plain + kPlainUid + 4, uid + 3, 4);
+    plain[kPlainStaticLock + 0] = bcc1;
+
+    // Pages 130..134 are not covered by the signatures: keep them, with the password of the new UID.
+    uint8_t tail[kNtag215Size - kTailDynamicLock];
+    std::memcpy(tail, image.data() + kTailDynamicLock, sizeof(tail));
+
+    TagImage out;
+    out.fill(0);
+    nfc3d_amiibo_pack(&keys.impl_->keys, plain, out.data());
+    std::memcpy(out.data() + kTailDynamicLock, tail, sizeof(tail));
+    derive_password(uid, out.data() + kTailPassword);
+
+    image = out;
+    std::memset(plain, 0, sizeof(plain));
+    return true;
+}
+
 bool verify(const Keys& keys, const TagImage& image, uint32_t& head, uint32_t& tail) {
     if (!keys.loaded()) {
         return false;

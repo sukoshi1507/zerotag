@@ -26,6 +26,7 @@ public:
 
 private:
     friend bool generate(const Keys&, uint32_t, uint32_t, TagImage&, std::string&);
+    friend bool rotate_uid(const Keys&, TagImage&, std::string&);
     friend bool verify(const Keys&, const TagImage&, uint32_t&, uint32_t&);
     struct Impl;
     Impl* impl_;
@@ -36,6 +37,12 @@ bool parse_id(const std::string& id, uint32_t& head, uint32_t& tail);
 
 // Builds a blank, signed NTAG215 image for the character identified by head/tail, with a random UID.
 bool generate(const Keys& keys, uint32_t head, uint32_t tail, TagImage& out, std::string& error);
+
+// Gives an existing image a new random UID while keeping all its data (owner, game saves...). The UID is part
+// of the key derivation and of the signatures, so the image is decrypted with the old UID and encrypted and
+// signed again with the new one; the NTAG password (derived from the UID) is updated too. The image is left
+// untouched and false is returned when it does not verify with the keys.
+bool rotate_uid(const Keys& keys, TagImage& image, std::string& error);
 
 // Checks the signatures of an image and extracts its head/tail. False if the image does not verify.
 bool verify(const Keys& keys, const TagImage& image, uint32_t& head, uint32_t& tail);
