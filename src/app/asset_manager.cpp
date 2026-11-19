@@ -16,7 +16,7 @@
 #include <utility>
 
 #ifndef APP_NAME
-#define APP_NAME "pixljszero"
+#define APP_NAME "zerotag"
 #endif
 
 #ifndef APP_CMAKE_ASSETS_ROOT

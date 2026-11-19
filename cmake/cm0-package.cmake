@@ -6,7 +6,7 @@
 
 include(GNUInstallDirs)
 
-set(APP_DISPLAY_NAME "pixljszero" CACHE STRING "Human-readable application name used by launchers and package filename")
+set(APP_DISPLAY_NAME "ZeroTag" CACHE STRING "Human-readable application name used by launchers and package filename")
 set(APP_DEBIAN_REVISION "rev1" CACHE STRING "Debian package revision/vendor suffix")
 set(APP_DEBIAN_ARCHITECTURE "arm64" CACHE STRING "Debian package architecture")
 # Deliberately a placeholder: the store rejects packages whose Maintainer is
@@ -34,7 +34,7 @@ install(TARGETS ${PROJECT_NAME}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/config/pixljszero.conf"
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/config/zerotag.conf"
     DESTINATION "/etc"
 )
 
@@ -57,7 +57,7 @@ install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets/images/"
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets/images/"
     DESTINATION "${CMAKE_INSTALL_DATADIR}/APPLaunch/share/images"
     FILES_MATCHING
-    PATTERN "pixljszero*.png"
+    PATTERN "zerotag*.png"
 )
 
 install(FILES "${APP_GENERATED_DIR}/${PROJECT_NAME}.desktop"

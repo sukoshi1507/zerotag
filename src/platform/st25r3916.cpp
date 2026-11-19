@@ -83,7 +83,7 @@ bool St25r3916::power_on(std::string& error) {
     gpio_v2_line_request request{};
     request.offsets[0] = static_cast<uint32_t>(config_.power_gpio);
     request.num_lines = 1;
-    std::strncpy(request.consumer, "pixljszero", sizeof(request.consumer) - 1);
+    std::strncpy(request.consumer, "zerotag", sizeof(request.consumer) - 1);
     request.config.flags = GPIO_V2_LINE_FLAG_OUTPUT;
     request.config.num_attrs = 1;
     request.config.attrs[0].mask = 1;

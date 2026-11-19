@@ -27,7 +27,7 @@ from pathlib import Path
 from PIL import Image
 
 BASE = "https://raw.githubusercontent.com/8bitDream/AmiiboAPI/master/webp/"
-USER_AGENT = "pixljszero-image-fetch"
+USER_AGENT = "zerotag-image-fetch"
 ROOT = Path(__file__).resolve().parent.parent
 
 

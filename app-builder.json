@@ -1,6 +1,6 @@
 {
-  "app_name": "pixljszero",
-  "package_name": "pixljszero",
+  "app_name": "zerotag",
+  "package_name": "zerotag",
   "version": "0.2.1",
   "description": "Amiibo emulator for CardputerZero with the Cap CC1101 (ST25R3916 NFC)",
   "store": {
@@ -13,7 +13,7 @@
       "screenshot/app-simulator-dark-darwin.png",
       "screenshot/app-simulator-light-darwin.png"
     ],
-    "icon": "assets/images/pixljszero.png",
+    "icon": "assets/images/zerotag.png",
     "license": "TODO: an SPDX id, e.g. MIT",
     "source_repo": "TODO: source repository URL",
     "author": {

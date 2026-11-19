@@ -15,7 +15,7 @@ import time
 import urllib.request
 
 BASE = "https://www.amiiboapi.org/api"
-USER_AGENT = "pixljszero-db-fetch"
+USER_AGENT = "zerotag-db-fetch"
 FIELDS = ("name", "character", "gameSeries", "amiiboSeries", "type")
 
 

@@ -48,7 +48,7 @@
 #endif
 
 #ifndef APP_CONFIG_FILE
-#define APP_CONFIG_FILE "pixljszero.conf"
+#define APP_CONFIG_FILE "zerotag.conf"
 #endif
 
 namespace app {
@@ -73,13 +73,13 @@ std::string writable_config_path() {
     if (const char* xdg_config_home = std::getenv("XDG_CONFIG_HOME")) {
         const std::filesystem::path root(xdg_config_home);
         if (!root.empty() && root.is_absolute()) {
-            return (root / "pixljszero" / "pixljszero.conf").string();
+            return (root / "zerotag" / "zerotag.conf").string();
         }
     }
     if (const char* home = std::getenv("HOME")) {
         const std::filesystem::path root(home);
         if (!root.empty() && root.is_absolute()) {
-            return (root / ".config" / "pixljszero" / "pixljszero.conf").string();
+            return (root / ".config" / "zerotag" / "zerotag.conf").string();
         }
     }
     return APP_CONFIG_FILE;
@@ -293,7 +293,7 @@ lv_display_t* init_device_display() {
 
 int Application::run() {
     logger::Logger::init();
-    logger::Logger::set_tag("pixljszero");
+    logger::Logger::set_tag("zerotag");
 
     lv_init();
 

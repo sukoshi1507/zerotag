@@ -1,4 +1,4 @@
-# pixljszero
+# ZeroTag
 
 Amiibo emulator for the M5Stack CardputerZero with the **Cap CC1101** (ST25R3916 NFC front end).
 Inspired by [pixl.js](https://github.com/solosky/pixl.js); written from the specifications, not
@@ -85,9 +85,9 @@ Common CMake cache options:
 | Option | Default | Description |
 | --- | --- | --- |
 | `USE_DESKTOP` | `ON` | Build SDL desktop simulator when `ON`; build embedded Linux target when `OFF`. |
-| `APP_NAME` | `pixljszero` | Application name used by installed asset lookup. |
+| `APP_NAME` | `zerotag` | Application name used by installed asset lookup. |
 | `APP_ASSETS_ROOT` | empty | Optional runtime asset root. Expected layout includes `fonts/`, `images/`, etc. |
-| `APP_CONFIG_FILE` | platform default | Optional config path. Defaults to `config/pixljszero.conf` for desktop builds and `/etc/pixljszero.conf` for device builds. |
+| `APP_CONFIG_FILE` | platform default | Optional config path. Defaults to `config/zerotag.conf` for desktop builds and `/etc/zerotag.conf` for device builds. |
 | `APP_KEY_INPUT_DEVICE` | empty | Optional Linux evdev device path, e.g. `/dev/input/event0`. Empty means auto-scan `/dev/input/event*`. |
 | `APP_FRAMEBUFFER_DEVICE` | `/dev/fb0` | Linux framebuffer device used by embedded builds when `APP_USE_DRM=OFF`. |
 | `APP_USE_DRM` | `OFF` | Use LVGL's Linux DRM/KMS backend instead of fbdev for embedded builds. |
@@ -100,7 +100,7 @@ Asset lookup order:
 2. source-tree `assets/` for development
 3. `/usr/share/<APP_NAME>/` for installed deployments
 
-Theme startup behavior is configured in `config/pixljszero.conf`:
+Theme startup behavior is configured in `config/zerotag.conf`:
 
 ```ini
 [application]
@@ -108,9 +108,9 @@ dark_mode=yes
 ```
 
 Set `dark_mode` to `yes` or `no`. The parser also accepts `true`/`false` and `1`/`0`.
-Installed device builds use `/etc/pixljszero.conf` as the system default. Changing the theme
+Installed device builds use `/etc/zerotag.conf` as the system default. Changing the theme
 from the navigation bar (keyboard shortcut `6`) writes a per-user override to
-`$XDG_CONFIG_HOME/pixljszero/pixljszero.conf`, or `~/.config/pixljszero/pixljszero.conf`
+`$XDG_CONFIG_HOME/zerotag/zerotag.conf`, or `~/.config/zerotag/zerotag.conf`
 when `XDG_CONFIG_HOME` is not set. The per-user file takes precedence on the next launch.
 
 ## Desktop Builds
@@ -171,9 +171,9 @@ cmake --build --preset linux-x86-64-dbg
 Run:
 
 ```shell
-./build/linux-x86-64/Debug/pixljszero
+./build/linux-x86-64/Debug/zerotag
 # or launch release build
-# ./build/linux-x86-64/Release/pixljszero
+# ./build/linux-x86-64/Release/zerotag
 ```
 
 ### macOS Desktop
@@ -216,9 +216,9 @@ cmake --build --preset darwin-arm64-dbg
 Run:
 
 ```shell
-./build/darwin-arm64/Debug/pixljszero
+./build/darwin-arm64/Debug/zerotag
 # or launch release build
-# ./build/darwin-arm64/Release/pixljszero
+# ./build/darwin-arm64/Release/zerotag
 ```
 
 For Intel macOS, use the `darwin-x86-64` configure preset and matching build preset:
@@ -228,9 +228,9 @@ cmake --preset darwin-x86-64
 cmake --build --preset darwin-x86-64-dbg
 # alternatively, you can run release build
 # cmake --build --preset darwin-x86-64-rel
-./build/darwin-x86-64/Debug/pixljszero
+./build/darwin-x86-64/Debug/zerotag
 # or launch release build
-# ./build/darwin-x86-64/Release/pixljszero
+# ./build/darwin-x86-64/Release/zerotag
 ```
 
 ### Windows Desktop
@@ -296,11 +296,11 @@ Configure and build with MSVC:
 ```powershell
 cmake --preset win32-msvc
 cmake --build --preset win32-msvc-dbg
-.\build\msvc\Debug\pixljszero.exe
+.\build\msvc\Debug\zerotag.exe
 
 # alternatively for release build
 # cmake --build --preset win32-msvc-rel
-# .\build\msvc\Release\pixljszero.exe
+# .\build\msvc\Release\zerotag.exe
 ```
 
 Configure and build with MinGW-w64:
@@ -325,11 +325,11 @@ Configure and build with MinGW-w64:
 ```powershell
 cmake --preset win32-mingw64
 cmake --build --preset win32-mingw64-dbg
-.\build\mingw64\Debug\pixljszero.exe
+.\build\mingw64\Debug\zerotag.exe
 
 # alternatively for release build
 # cmake --build --preset win32-mingw64-rel
-#.\build\mingw64\Release\pixljszero.exe
+#.\build\mingw64\Release\zerotag.exe
 ```
 > [!NOTE]
 > `VCPKG` will handle the dependencies during CMake configuration process automatically, 
@@ -383,7 +383,7 @@ By default, the debian package is copied to '$HOME' folder, normally it's under 
 On your device, install the copied package with `apt` and replace the package file name with the one you copied:
 
 ```shell
-sudo apt install --no-install-recommends ./pixljszero_0.2.1_rev1_arm64.deb
+sudo apt install --no-install-recommends ./zerotag_0.2.1_rev1_arm64.deb
 ```
 
 
@@ -459,20 +459,20 @@ Debian packages are produced with CPack and written to `dist/`. The package file
 Default example:
 
 ```text
-dist/pixljszero_0.2.1_rev1_arm64.deb
+dist/zerotag_0.2.1_rev1_arm64.deb
 ```
 
 Package layout:
 
 | Path | Content |
 | --- | --- |
-| `/usr/bin/pixljszero` | Application executable. |
-| `/etc/pixljszero.conf` | System-default application settings, including the startup theme. |
-| `/usr/share/pixljszero/` | Runtime assets: fonts, images, audio. |
-| `/usr/share/APPLaunch/applications/pixljszero.desktop` | APPLaunch launcher entry. |
+| `/usr/bin/zerotag` | Application executable. |
+| `/etc/zerotag.conf` | System-default application settings, including the startup theme. |
+| `/usr/share/zerotag/` | Runtime assets: fonts, images, audio. |
+| `/usr/share/APPLaunch/applications/zerotag.desktop` | APPLaunch launcher entry. |
 | `/usr/share/APPLaunch/share/images/template*.png` | APPLaunch launcher icons/fallbacks. |
-| `/usr/lib/systemd/system/pixljszero.service` | Optional systemd service for embedded autostart. |
-| `/usr/share/doc/pixljszero/` | README and third-party asset license notes. |
+| `/usr/lib/systemd/system/zerotag.service` | Optional systemd service for embedded autostart. |
+| `/usr/share/doc/zerotag/` | README and third-party asset license notes. |
 
 Build and package:
 
