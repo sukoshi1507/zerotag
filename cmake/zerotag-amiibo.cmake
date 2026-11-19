@@ -25,6 +25,7 @@ elseif(ZEROTAG_FETCH_MBEDTLS)
         GIT_REPOSITORY https://github.com/Mbed-TLS/mbedtls.git
         GIT_TAG        mbedtls-3.6.2
         GIT_SHALLOW    TRUE
+        EXCLUDE_FROM_ALL # static dependency: built when needed, never installed or packaged
     )
     FetchContent_MakeAvailable(mbedtls)
     set(_ZT_MBEDCRYPTO_TARGET mbedcrypto)
