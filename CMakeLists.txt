@@ -395,6 +395,9 @@ endif()
 
 
 
+# amiibo image generation/verification and NFC tools
+include(cmake/zerotag-amiibo.cmake)
+
 # ====================================================
 # Platform sources
 # ====================================================
