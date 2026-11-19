@@ -53,6 +53,7 @@ target_include_directories(${PROJECT_NAME}_amiibo
 target_link_libraries(${PROJECT_NAME}_amiibo PUBLIC ${_ZT_MBEDCRYPTO_TARGET})
 
 if(ZEROTAG_BUILD_TOOLS)
+    find_package(Threads REQUIRED)
     set(_TOOLS "${CMAKE_CURRENT_LIST_DIR}/../tools")
     set(_PLATFORM_SRC "${CMAKE_CURRENT_LIST_DIR}/../src/platform")
 
@@ -68,8 +69,10 @@ if(ZEROTAG_BUILD_TOOLS)
             add_executable(zerotag_${tool}
                 "${_TOOLS}/${tool}.cpp"
                 "${_PLATFORM_SRC}/st25r3916.cpp"
-                "${_PLATFORM_SRC}/st25r3916_emulation.cpp")
+                "${_PLATFORM_SRC}/st25r3916_emulation.cpp"
+                "${_PLATFORM_SRC}/emulation_session.cpp")
             target_include_directories(zerotag_${tool} PRIVATE "${_PLATFORM_SRC}")
+            target_link_libraries(zerotag_${tool} PRIVATE Threads::Threads)
         endforeach()
     endif()
 endif()

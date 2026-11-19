@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -75,8 +76,17 @@ public:
     // from `image` (540 bytes, writes from the reader modify it in place). It runs for `seconds`
     // (<= 0: until `stop` returns true) and reports what happens through `log`.
     using EmulationLog = std::function<void(const std::string&)>;
+
+    // Live counters, readable from another thread while the emulation runs.
+    struct EmulationStats {
+        std::atomic<uint32_t> reads{0};        // READ / FAST_READ / GET_VERSION / READ_SIG / PWD_AUTH answered
+        std::atomic<uint32_t> writes{0};       // WRITE commands accepted (the image in memory changed)
+        std::atomic<bool> field{false};        // a reader field is present
+        std::atomic<bool> selected{false};     // a reader has selected the tag
+    };
+
     bool emulate_ntag215(uint8_t* image, int seconds, const EmulationLog& log, std::string& error,
-                         const std::function<bool()>& stop = {});
+                         const std::function<bool()>& stop = {}, EmulationStats* stats = nullptr);
 
 private:
     St25r3916Config config_;

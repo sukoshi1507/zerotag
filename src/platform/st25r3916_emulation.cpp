@@ -185,7 +185,7 @@ bool St25r3916::transmit_bits(const uint8_t* frame, size_t bits, bool with_crc) 
 }
 
 bool St25r3916::emulate_ntag215(uint8_t* image, int seconds, const EmulationLog& log_fn, std::string& error,
-                                const std::function<bool()>& stop) {
+                                const std::function<bool()>& stop, EmulationStats* stats) {
     auto log = [&](const std::string& s) {
         if (log_fn) {
             log_fn(s);
@@ -358,6 +358,10 @@ bool St25r3916::emulate_ntag215(uint8_t* image, int seconds, const EmulationLog&
             log(std::string("state ") + state_name(state) + " -> " + state_name(actual));
         }
         state = actual;
+        if (stats) {
+            stats->field = (actual != State::Off);
+            stats->selected = (actual == State::Active);
+        }
     };
 
     auto send_reply = [&](const Reply& r) {
@@ -463,6 +467,13 @@ bool St25r3916::emulate_ntag215(uint8_t* image, int seconds, const EmulationLog&
             ++frames;
             const Reply reply = handle_type2(image, rx, n, log_fn);
             send_reply(reply);
+            if (stats) {
+                if (reply.kind == Reply::Data) {
+                    ++stats->reads;
+                } else if (reply.kind == Reply::Ack) {
+                    ++stats->writes;
+                }
+            }
             log("  rx " + hex(rx, n) +
                 (reply.kind == Reply::Data  ? "  -> " + std::to_string(reply.data.size()) + " bytes"
                  : reply.kind == Reply::Ack ? "  -> ACK"
@@ -505,6 +516,10 @@ bool St25r3916::emulate_ntag215(uint8_t* image, int seconds, const EmulationLog&
         }
     }
 
+    if (stats) {
+        stats->field = false;
+        stats->selected = false;
+    }
     log("emulation finished, " + std::to_string(frames) + " command frame(s) served");
 
     // Leave the chip in a quiet state.
