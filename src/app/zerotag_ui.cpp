@@ -586,7 +586,7 @@ lv_obj_t* ZeroTagUi::box(lv_obj_t* parent, int x, int y, int w, int h, lv_color_
 }
 
 lv_obj_t* ZeroTagUi::text(lv_obj_t* parent, const std::string& value, const lv_font_t* f, lv_color_t color, int x,
-                          int y, int w) {
+                          int y, int w, bool wrap) {
     lv_obj_t* l = lv_label_create(parent);
     lv_label_set_text(l, value.c_str());
     lv_obj_set_style_text_font(l, f, 0);
@@ -594,7 +594,13 @@ lv_obj_t* ZeroTagUi::text(lv_obj_t* parent, const std::string& value, const lv_f
     lv_obj_set_pos(l, x, y);
     if (w > 0) {
         lv_obj_set_width(l, w);
-        lv_label_set_long_mode(l, LV_LABEL_LONG_MODE_DOTS);
+        if (wrap) {
+            lv_label_set_long_mode(l, LV_LABEL_LONG_MODE_WRAP);
+        } else {
+            // One line: the height is fixed so that the long text is cut with "..." instead of wrapping.
+            lv_obj_set_height(l, lv_font_get_line_height(f));
+            lv_label_set_long_mode(l, LV_LABEL_LONG_MODE_DOTS);
+        }
     }
     return l;
 }
@@ -743,12 +749,11 @@ void ZeroTagUi::render_library() {
             text(root_, item.entry->game_series, font(9), dim_, tx, 57, tw);
             text(root_, item.entry->type, font(9), dim_, tx, 70, tw);
         }
-        text(root_, "UID", font(9), dim_, kListW + 8, 106);
-        text(root_, clip(item.uid, 20), font(9), pal_.text, kListW + 40, 106, kScreenW - kListW - 46);
-        text(root_, "Signature", font(9), dim_, kListW + 8, 120);
-        const char* sig = !item.signature_checked ? "non verifiee" : (item.signature_ok ? "valide" : "invalide");
+        text(root_, item.uid, font(9), pal_.text, kListW + 8, 104, kScreenW - kListW - 12);
+        const char* sig = !item.signature_checked ? "Signature non verifiee"
+                                                  : (item.signature_ok ? "Signature valide" : "Signature invalide");
         text(root_, sig, font(9), !item.signature_checked ? dim_ : (item.signature_ok ? pal_.primary : pal_.error),
-             kListW + 56, 120, kScreenW - kListW - 62);
+             kListW + 8, 118, kScreenW - kListW - 12);
     }
     render_footer({{"Haut/Bas", "Choix"}, {"Entree", "Ouvrir"}, {"Tab", "Catalogue"}, {"F1", "Etat"}});
 }
@@ -814,13 +819,13 @@ void ZeroTagUi::render_catalogue() {
         lv_obj_t* note = box(root_, kListW + 6, 104, kScreenW - kListW - 12, 44, pal_.button, 1, pal_.border, 4);
         if (!keys_ok_) {
             text(note, "Cles introuvables", font(9, true), pal_.warning, 6, 4, kScreenW - kListW - 24);
-            text(note, "Creation impossible : voir F1.", font(9), dim_, 6, 18, kScreenW - kListW - 24);
+            text(note, "Creation impossible : voir F1.", font(9), dim_, 6, 18, kScreenW - kListW - 24, true);
         } else if (owned(e)) {
-            text(note, "Deja dans la bibliotheque", font(9, true), pal_.primary, 6, 4, kScreenW - kListW - 24);
-            text(note, "Entree en ajoute un autre exemplaire.", font(9), dim_, 6, 18, kScreenW - kListW - 24);
+            text(note, "Deja possede", font(9, true), pal_.primary, 6, 4, kScreenW - kListW - 24);
+            text(note, "Entree en cree un autre exemplaire.", font(9), dim_, 6, 18, kScreenW - kListW - 24, true);
         } else {
-            text(note, "Pas encore dans la bibliotheque", font(9, true), pal_.warning, 6, 4, kScreenW - kListW - 24);
-            text(note, "Entree cree une image vierge signee.", font(9), dim_, 6, 18, kScreenW - kListW - 24);
+            text(note, "Pas encore possede", font(9, true), pal_.warning, 6, 4, kScreenW - kListW - 24);
+            text(note, "Entree cree une image vierge signee.", font(9), dim_, 6, 18, kScreenW - kListW - 24, true);
         }
     }
     render_footer({{"Haut/Bas", "Choix"}, {"Entree", "Creer"}, {"Tab", "Biblio."}, {"Echap", "Retour"}});
@@ -913,19 +918,19 @@ void ZeroTagUi::render_emulating() {
     const int w = kScreenW - x - 8;
     if (!emu_error_.empty()) {
         text(root_, "Emulation impossible", font(13, true), pal_.error, x, 30, w);
-        text(root_, clip(emu_error_, 90), font(9), pal_.text, x, 50, w);
+        text(root_, clip(emu_error_, 90), font(9), pal_.text, x, 50, w, true);
         const bool perms = emu_error_.find("Permission") != std::string::npos ||
                            emu_error_.find("denied") != std::string::npos || emu_error_.find("open") != std::string::npos ||
                            emu_error_.find("GPIO") != std::string::npos;
         text(root_, perms ? "Droits insuffisants : le Cap demande root (voir F1 dans la bibliotheque)."
                           : "Verifie le Cap et relance (F1 : etat).",
-             font(9), dim_, x, 88, w);
+             font(9), dim_, x, 88, w, true);
     } else {
         text(root_, selected ? "Lecteur connecte" : (field ? "Lecteur detecte..." : "En attente d'un lecteur..."),
              font(13, true), accent, x, 28, w);
         text(root_, selected ? "Garde le Cap en place jusqu'a la fin du chargement."
                              : "Pose le Cap contre la zone NFC de la console quand le jeu demande de scanner.",
-             font(9), dim_, x, 48, w);
+             font(9), dim_, x, 48, w, true);
         const uint32_t reads = running ? session_->stats().reads.load() : 0;
         const uint32_t writes = running ? session_->stats().writes.load() : 0;
         const uint32_t secs = lv_tick_elaps(emu_started_) / 1000u;
@@ -974,7 +979,7 @@ void ZeroTagUi::render_setup() {
     for (const auto& r : rows) {
         box(root_, 8, y + 3, 8, 8, r.color, 0, r.color, 4);
         text(root_, r.title, font(11, true), pal_.text, 24, y, kScreenW - 32);
-        text(root_, r.detail, font(9), dim_, 24, y + 15, kScreenW - 32);
+        text(root_, r.detail, font(9), dim_, 24, y + 15, kScreenW - 32, true);
         y += 40;
         box(root_, 0, y - 6, kScreenW, 1, pal_.surface, 0);
     }

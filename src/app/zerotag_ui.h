@@ -77,7 +77,7 @@ private:
     lv_obj_t* box(lv_obj_t* parent, int x, int y, int w, int h, lv_color_t fill, int border_w = 0,
                   lv_color_t border = lv_color_black(), int radius = 0);
     lv_obj_t* text(lv_obj_t* parent, const std::string& value, const lv_font_t* font, lv_color_t color, int x,
-                   int y, int w = 0);
+                   int y, int w = 0, bool wrap = false);
     lv_obj_t* thumb(lv_obj_t* parent, const amiibo::Entry* entry, int x, int y, int h);
     void search_field(lv_obj_t* parent, const std::string& query, const std::string& placeholder, bool focused);
     const lv_font_t* font(int px, bool bold = false);
