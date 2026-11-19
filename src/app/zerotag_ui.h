@@ -49,7 +49,7 @@ public:
     void on_key_release(uint32_t key);
 
 private:
-    enum class Screen { Library, Catalogue, Detail, Emulating, Settings, Help };
+    enum class Screen { Library, Catalogue, Detail, Emulating, Settings, Help, CapSetup };
 
     // ---- data ----
     void load_data();
@@ -72,6 +72,8 @@ private:
     void check_hardware();
     void cycle_language(int direction);
     void toggle_rotation();
+    void open_cap_setup(Screen after);
+    void submit_cap_setup();
 
     bool handle_text_key(uint32_t key, std::string& query);
     void move_selection(int delta, size_t count, int& selected, int& top, int rows);
@@ -86,6 +88,7 @@ private:
     void render_emulating();
     void render_settings();
     void render_help();
+    void render_cap_setup();
 
     lv_obj_t* box(lv_obj_t* parent, int x, int y, int w, int h, lv_color_t fill, int border_w = 0,
                   lv_color_t border = lv_color_black(), int radius = 0);
@@ -146,6 +149,11 @@ private:
     bool banner_error_{false};
     uint32_t banner_until_{0};
     int pending_confirm_{0}; // 1: reset, 2: delete (second press confirms)
+    // Cap setup (sudo password, never stored: wiped after use)
+    std::string cap_password_;
+    std::string cap_message_;
+    bool cap_busy_{false};
+    Screen screen_after_cap_{Screen::Library};
     int settings_sel_{0};
     int settings_top_{0};
     Screen screen_before_help_{Screen::Library};

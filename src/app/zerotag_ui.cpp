@@ -4,6 +4,7 @@
 
 #include "zerotag_ui.h"
 
+#include "cap_setup.h"
 #include "device_status.h"
 #include "i18n.h"
 #include "linux_input.h"
@@ -171,6 +172,10 @@ void ZeroTagUi::start() {
     lv_obj_set_style_bg_opa(root_, LV_OPA_COVER, 0);
     lv_obj_set_style_bg_color(root_, pal_.background, 0);
     timer_ = lv_timer_create(tick_cb, 250, this);
+    if (!platform::spi_available()) {
+        screen_after_cap_ = Screen::Library;
+        screen_ = Screen::CapSetup;
+    }
     render();
 }
 
@@ -250,6 +255,10 @@ void ZeroTagUi::reset_item(const amiibo::Item& item) {
 }
 
 void ZeroTagUi::start_emulation(const amiibo::Item& item) {
+    if (!platform::spi_available()) {
+        open_cap_setup(Screen::Detail);
+        return;
+    }
     emu_error_.clear();
     last_stats_key_ = 0;
     emu_started_ = lv_tick_get();
@@ -323,6 +332,44 @@ void ZeroTagUi::cycle_language(int direction) {
         persist_setting_("language", i18n::code(next));
     }
     say(i18n::format(Str::BannerLanguage, i18n::native_name(next)));
+    render();
+}
+
+void ZeroTagUi::open_cap_setup(Screen after) {
+    cap_password_.clear();
+    cap_message_.clear();
+    cap_busy_ = false;
+    screen_after_cap_ = after;
+    go(Screen::CapSetup);
+}
+
+void ZeroTagUi::submit_cap_setup() {
+    if (cap_busy_) {
+        return;
+    }
+    cap_busy_ = true;
+    cap_message_.clear();
+    render();
+    lv_refr_now(nullptr); // sudo can take a couple of seconds
+    const auto result = platform::run_cap_setup(cap_password_); // wipes the password
+    cap_busy_ = false;
+    switch (result.status) {
+    case platform::CapSetupResult::Status::Ok:
+        if (platform::spi_available()) {
+            check_hardware();
+            say(tr(Str::CapDone));
+            go(screen_after_cap_);
+            return;
+        }
+        cap_message_ = i18n::format(Str::CapFailed, "no SPI node");
+        break;
+    case platform::CapSetupResult::Status::PasswordRefused:
+        cap_message_ = tr(Str::CapBadPassword);
+        break;
+    default:
+        cap_message_ = i18n::format(Str::CapFailed, result.message.c_str());
+        break;
+    }
     render();
 }
 
@@ -424,6 +471,9 @@ bool ZeroTagUi::handle_text_key(uint32_t key, std::string& query) {
         }
         return true;
     }
+    if (key >= 'A' && key <= 'Z') {
+        key = key - 'A' + 'a'; // filters ignore case
+    }
     if (printable(key) && query.size() < 24) {
         query.push_back(static_cast<char>(key));
         return true;
@@ -457,6 +507,9 @@ bool ZeroTagUi::on_key(uint32_t key, bool long_pressed) {
         }
         return true;
     }
+    if (key == platform::kKeyHelp && screen_ == Screen::CapSetup) {
+        return true;
+    }
     if (key == platform::kKeyHelp) {
         if (!long_pressed) {
             if (screen_ == Screen::Help) {
@@ -481,6 +534,21 @@ bool ZeroTagUi::on_key(uint32_t key, bool long_pressed) {
     if (long_pressed) {
         return true;
     }
+    if (screen_ == Screen::CapSetup) {
+        if (key == LV_KEY_ENTER) {
+            submit_cap_setup();
+        } else if (key == LV_KEY_BACKSPACE) {
+            if (!cap_password_.empty()) {
+                cap_password_.pop_back();
+            }
+            render();
+        } else if (key >= 32 && key <= 126 && cap_password_.size() < 64 && !cap_busy_) {
+            cap_password_.push_back(static_cast<char>(key));
+            render();
+        }
+        return true;
+    }
+
     const int page = kRows;
     switch (screen_) {
     case Screen::Library: {
@@ -608,6 +676,10 @@ bool ZeroTagUi::on_key(uint32_t key, bool long_pressed) {
                 toggle_rotation();
                 return true;
             case 2:
+                if (!platform::spi_available()) {
+                    open_cap_setup(Screen::Settings);
+                    return true;
+                }
                 check_hardware();
                 break;
             case 3:
@@ -634,6 +706,7 @@ bool ZeroTagUi::on_key(uint32_t key, bool long_pressed) {
         render();
         return true;
     case Screen::Help:
+    case Screen::CapSetup:
         return true;
     }
     return false;
@@ -679,6 +752,13 @@ void ZeroTagUi::on_key_release(uint32_t key) {
         break;
     case Screen::Help:
         go(screen_before_help_);
+        break;
+    case Screen::CapSetup:
+        if (!cap_busy_) {
+            cap_password_.assign(cap_password_.size(), '\0');
+            cap_password_.clear();
+            go(screen_after_cap_);
+        }
         break;
     }
 }
@@ -921,6 +1001,9 @@ void ZeroTagUi::render() {
         break;
     case Screen::Help:
         render_help();
+        break;
+    case Screen::CapSetup:
+        render_cap_setup();
         break;
     }
     draw_frame();
@@ -1283,6 +1366,24 @@ void ZeroTagUi::render_help() {
         y += 17;
     }
     render_footer({{tr(Str::KeyEsc), tr(Str::HintBack)}});
+}
+
+void ZeroTagUi::render_cap_setup() {
+    render_bar("ZEROTAG", tr(Str::CapSetupTitle));
+    text(root_, tr(Str::CapSetupTitle), font(12, true), pal_.warning, 14, kContentTop + 8, kScreenW - 28);
+    text(root_, tr(Str::CapSetupText), font(10), pal_.text, 14, kContentTop + 28, kScreenW - 28, true);
+
+    text(root_, tr(Str::CapPassword), font(9), dim_, 14, 90, 80);
+    lv_obj_t* field = box(root_, 14, 102, kScreenW - 28, 18, pal_.button, 2, cap_busy_ ? pal_.border : pal_.accent, 0);
+    // One asterisk per character: the password itself is never drawn.
+    text(field, std::string(cap_password_.size(), '*') + (cap_busy_ ? "" : "_"), font(12, true), pal_.text, 4, 0,
+         kScreenW - 44);
+    if (cap_busy_) {
+        text(root_, tr(Str::CapBusy), font(10), pal_.primary, 14, 124, kScreenW - 28);
+    } else if (!cap_message_.empty()) {
+        text(root_, cap_message_, font(10), pal_.error, 14, 124, kScreenW - 28, true);
+    }
+    render_footer({{tr(Str::KeyEnter), tr(Str::HintValidate)}, {tr(Str::KeyEsc), tr(Str::HintSkip)}});
 }
 
 } // namespace app

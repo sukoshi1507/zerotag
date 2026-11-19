@@ -38,8 +38,10 @@ sudo apt install ./ZeroTag_<version>_rev1_arm64.deb
 The package adds ZeroTag to the APPLaunch menu. The application runs as your user (it needs the `spi` and `gpio`
 groups, which the default user has) and installs no background service.
 
-The Cap needs an SPI device-tree overlay, which only root can load and which is lost at every reboot. Run this
-once after each boot, before using ZeroTag (the app tells you when it is missing):
+The Cap needs an SPI device-tree overlay, which only root can load and which is lost at every reboot. If it is
+missing when ZeroTag starts (or when you try to emulate), ZeroTag offers to enable it: type your `sudo` password on
+the device keyboard (just `Enter` if your account needs none). The password goes straight to `sudo`, is never stored
+or logged, and is wiped from memory afterwards. You can also do it yourself, once after each boot:
 
 ```shell
 sudo /usr/lib/zerotag/cap-setup
@@ -70,6 +72,8 @@ Backups go in `~/amiibo` (override with `ZEROTAG_AMIIBO_DIR`; keys with `ZEROTAG
 | Amiibo page | `Enter` emulate, `U` toggle UID rotation, `R` reset with a new UID (twice), `Del` delete (twice) |
 | Emulating | hold the Cap against the console's NFC area; `Esc` stops and saves |
 | Anywhere | `Fn+H` help, `Fn+J` screenshot (saved in `~/Pictures/Screenshots`) |
+
+The whole keyboard is supported, including the `Shift` capitals and the `Sym` layer (symbols) of the CardputerZero.
 
 Settings (`F1`) holds the language, UID rotation, and the status of the Cap, the keys and the folder.
 

@@ -41,6 +41,7 @@ constexpr uint32_t kLongPressMs = 700;
 #if !USE_DESKTOP
 struct EvdevKeypad {
     int fd{-1};
+    bool shift{false};
     lv_indev_state_t state{LV_INDEV_STATE_RELEASED};
     uint32_t key{0};
     bool router_event_pending{false};
@@ -183,7 +184,7 @@ void key_event_cb(lv_event_t* event) {
 }
 
 #if !USE_DESKTOP
-uint32_t map_evdev_key(uint16_t code) {
+uint32_t map_evdev_key(uint16_t code, bool shift) {
     switch (code) {
         case KEY_ESC:
             return LV_KEY_ESC;
@@ -191,20 +192,6 @@ uint32_t map_evdev_key(uint16_t code) {
             return LV_KEY_LEFT;
         case KEY_RIGHT:
             return LV_KEY_RIGHT;
-        case KEY_Z:
-            return 'z';
-        case KEY_C:
-            return 'c';
-        case KEY_4:
-            return '4';
-        case KEY_5:
-            return '5';
-        case KEY_6:
-            return '6';
-        case KEY_7:
-            return '7';
-        case KEY_8:
-            return '8';
         case KEY_SYSRQ:
             return kKeyPrintScreen;
         case KEY_HELP:
@@ -236,28 +223,46 @@ uint32_t map_evdev_key(uint16_t code) {
             return kKeyF3;
         case KEY_F4:
             return kKeyF4;
-        case KEY_MINUS:
-            return '-';
-        case KEY_DOT:
-            return '.';
-        case KEY_APOSTROPHE:
-            return '\'';
         default:
             break;
     }
 
-    // Letters and digits (Linux key codes are not contiguous: three keyboard rows).
+    // The Sym layer of the keyboard (blue legends) is produced by the kernel driver as unusual key codes (keypad
+    // and Japanese keys); the launcher translates them with /usr/share/keymaps/tca8418_keypad_m5stack_keymap.map.
+    // Same table here, as characters. Base-layer keys never send these codes.
+    struct SymKey {
+        uint16_t code;
+        char ch;
+    };
+    static const SymKey kSymKeys[] = {
+        {KEY_LEFTBRACE, '!'},   {KEY_RIGHTBRACE, '@'}, {KEY_SEMICOLON, '#'},  {KEY_APOSTROPHE, '$'},
+        {KEY_GRAVE, '%'},       {KEY_BACKSLASH, '^'},  {KEY_COMMA, '&'},      {KEY_DOT, '*'},
+        {KEY_SLASH, '('},       {KEY_MUHENKAN, ')'},   {KEY_KPASTERISK, '~'}, {KEY_NUMLOCK, '`'},
+        {KEY_SCROLLLOCK, '_'},  {KEY_KP7, '-'},        {KEY_KP8, '+'},        {KEY_KP9, '='},
+        {KEY_KPMINUS, '['},     {KEY_KP4, ']'},        {KEY_KP5, '{'},        {KEY_KP6, '}'},
+        {KEY_KP1, ';'},         {KEY_KP2, ':'},        {KEY_KP3, '\''},       {KEY_KP0, '"'},
+        {KEY_KPDOT, '<'},       {KEY_ZENKAKUHANKAKU, '>'}, {KEY_102ND, '\\'},   {KEY_RO, '|'},
+        {KEY_KATAKANA, ','},    {KEY_HIRAGANA, '.'},   {KEY_HENKAN, '/'},     {KEY_KATAKANAHIRAGANA, '?'},
+    };
+    for (const auto& sym : kSymKeys) {
+        if (code == sym.code) {
+            return static_cast<uint32_t>(sym.ch);
+        }
+    }
+
+    // Letters (Linux key codes are not contiguous: three keyboard rows) and digits. Shift gives capitals only.
     static const char kRowQ[] = "qwertyuiop";   // KEY_Q .. KEY_P  (16..25)
     static const char kRowA[] = "asdfghjkl";    // KEY_A .. KEY_L  (30..38)
     static const char kRowZ[] = "zxcvbnm";      // KEY_Z .. KEY_M  (44..50)
+    auto letter = [shift](char c) { return static_cast<uint32_t>(shift ? c - 'a' + 'A' : c); };
     if (code >= KEY_Q && code <= KEY_P) {
-        return static_cast<uint32_t>(kRowQ[code - KEY_Q]);
+        return letter(kRowQ[code - KEY_Q]);
     }
     if (code >= KEY_A && code <= KEY_L) {
-        return static_cast<uint32_t>(kRowA[code - KEY_A]);
+        return letter(kRowA[code - KEY_A]);
     }
     if (code >= KEY_Z && code <= KEY_M) {
-        return static_cast<uint32_t>(kRowZ[code - KEY_Z]);
+        return letter(kRowZ[code - KEY_Z]);
     }
     if (code >= KEY_1 && code <= KEY_9) {
         return static_cast<uint32_t>('1' + (code - KEY_1));
@@ -298,7 +303,11 @@ void evdev_read_cb(lv_indev_t* indev, lv_indev_data_t* data) {
             continue;
         }
 
-        const auto key = map_evdev_key(input.code);
+        if (input.code == KEY_LEFTSHIFT || input.code == KEY_RIGHTSHIFT) {
+            keypad->shift = input.value != 0;
+            continue;
+        }
+        const auto key = map_evdev_key(input.code, keypad->shift);
         if (!key || input.value == 2) {
             continue;
         }
