@@ -300,6 +300,19 @@ void ZeroTagUi::stop_emulation() {
     chip_.reset(); // powers the Cap off
 }
 
+void ZeroTagUi::cycle_language(int direction) {
+    i18n::Lang next = i18n::language();
+    for (int i = 0; i < (direction >= 0 ? 1 : i18n::kLangCount - 1); ++i) {
+        next = i18n::next_language(next);
+    }
+    i18n::set_language(next);
+    if (persist_language_) {
+        persist_language_(i18n::code(next));
+    }
+    say(i18n::format(Str::BannerLanguage, i18n::native_name(next)));
+    render();
+}
+
 void ZeroTagUi::check_hardware() {
     cap_ok_ = false;
     cap_status_.clear();
@@ -415,17 +428,6 @@ bool ZeroTagUi::on_key(uint32_t key, bool long_pressed) {
     if (long_pressed) {
         return true;
     }
-    if (key == platform::kKeyF2 && screen_ != Screen::Emulating) {
-        const auto next = i18n::next_language(i18n::language());
-        i18n::set_language(next);
-        if (persist_language_) {
-            persist_language_(i18n::code(next));
-        }
-        say(i18n::format(Str::BannerLanguage, i18n::native_name(next)));
-        render();
-        return true;
-    }
-
     const int page = kRows;
     switch (screen_) {
     case Screen::Library: {
@@ -448,9 +450,9 @@ bool ZeroTagUi::on_key(uint32_t key, bool long_pressed) {
             go(Screen::Catalogue);
             return true;
         } else if (key == platform::kKeyF1) {
-            screen_before_setup_ = Screen::Library;
+            screen_before_settings_ = Screen::Library;
             check_hardware();
-            go(Screen::Setup);
+            go(Screen::Settings);
             return true;
         } else if (handle_text_key(key, lib_query_)) {
             lib_sel_ = 0;
@@ -480,9 +482,9 @@ bool ZeroTagUi::on_key(uint32_t key, bool long_pressed) {
             go(Screen::Library);
             return true;
         } else if (key == platform::kKeyF1) {
-            screen_before_setup_ = Screen::Catalogue;
+            screen_before_settings_ = Screen::Catalogue;
             check_hardware();
-            go(Screen::Setup);
+            go(Screen::Settings);
             return true;
         } else if (handle_text_key(key, cat_query_)) {
             cat_sel_ = 0;
@@ -531,15 +533,35 @@ bool ZeroTagUi::on_key(uint32_t key, bool long_pressed) {
     }
     case Screen::Emulating:
         return true;
-    case Screen::Setup:
-        if (key == 'r') {
-            keys_ok_ = keys_->load(keys_path_, keys_error_);
-            rescan_library();
-            check_hardware();
-            render();
+    case Screen::Settings:
+        if (key == LV_KEY_UP) {
+            settings_sel_ = std::max(0, settings_sel_ - 1);
+        } else if (key == LV_KEY_DOWN) {
+            settings_sel_ = std::min(3, settings_sel_ + 1);
+        } else if (settings_sel_ == 0 && key == LV_KEY_LEFT) {
+            cycle_language(-1);
             return true;
+        } else if ((settings_sel_ == 0 && key == LV_KEY_RIGHT) || key == LV_KEY_ENTER) {
+            switch (settings_sel_) {
+            case 0:
+                cycle_language(1);
+                return true;
+            case 1:
+                check_hardware();
+                break;
+            case 2:
+                keys_ok_ = keys_->load(keys_path_, keys_error_);
+                rescan_library();
+                break;
+            default:
+                rescan_library();
+                break;
+            }
+        } else {
+            return false;
         }
-        return false;
+        render();
+        return true;
     }
     return false;
 }
@@ -579,8 +601,8 @@ void ZeroTagUi::on_key_release(uint32_t key) {
         stop_emulation();
         go(Screen::Detail);
         break;
-    case Screen::Setup:
-        go(screen_before_setup_);
+    case Screen::Settings:
+        go(screen_before_settings_);
         break;
     }
 }
@@ -814,8 +836,8 @@ void ZeroTagUi::render() {
     case Screen::Emulating:
         render_emulating();
         break;
-    case Screen::Setup:
-        render_setup();
+    case Screen::Settings:
+        render_settings();
         break;
     }
     draw_frame();
@@ -866,8 +888,7 @@ void ZeroTagUi::render_library() {
     render_footer({{tr(Str::KeyUpDown), tr(Str::HintChoose)},
                    {tr(Str::KeyEnter), tr(Str::HintOpen)},
                    {tr(Str::KeyTab), tr(Str::HintCatalogue)},
-                   {"F1", tr(Str::HintState)},
-                   {"F2", tr(Str::HintLanguage)}});
+                   {"F1", tr(Str::HintSettings)}});
 }
 
 void ZeroTagUi::render_catalogue() {
@@ -928,8 +949,7 @@ void ZeroTagUi::render_catalogue() {
     render_footer({{tr(Str::KeyUpDown), tr(Str::HintChoose)},
                    {tr(Str::KeyEnter), tr(Str::HintCreate)},
                    {tr(Str::KeyTab), tr(Str::HintLibrary)},
-                   {tr(Str::KeyEsc), tr(Str::HintBack)},
-                   {"F2", tr(Str::HintLanguage)}});
+                   {"F1", tr(Str::HintSettings)}});
 }
 
 void ZeroTagUi::render_detail() {
@@ -971,7 +991,7 @@ void ZeroTagUi::render_detail() {
     const struct {
         const char* k;
         std::string v;
-    } rows[] = {{"UID", item->uid}, {"Id", id}, {"File", base_name(item->path)}};
+    } rows[] = {{"UID", item->uid}, {"Id", id}, {tr(Str::LabelFile), base_name(item->path)}};
     int y = 80;
     for (const auto& r : rows) {
         text(root_, r.k, font(9), dim_, x, y, 36);
@@ -1056,31 +1076,55 @@ void ZeroTagUi::render_emulating() {
     }
 }
 
-void ZeroTagUi::render_setup() {
+void ZeroTagUi::render_settings() {
     render_bar("ZEROTAG", tr(Str::SetupTitle));
+    auto short_path = [&](const std::string& p) {
+        const std::string home = home_dir();
+        return (!home.empty() && p.rfind(home, 0) == 0) ? "~" + p.substr(home.size()) : p;
+    };
     struct Row {
-        lv_color_t color;
         std::string title;
         std::string detail;
+        std::string value; // right side, language only
+        int status;        // -1 none, 0 ok, 1 warning, 2 error
     };
     std::vector<Row> rows;
-    rows.push_back({cap_ok_ ? pal_.primary : pal_.error, tr(Str::SetupCap),
-                    cap_status_.empty() ? std::string(tr(Str::SetupNotChecked)) : clip(cap_status_, 90)});
-    rows.push_back({library_ok_ && db_ok_ ? pal_.primary : pal_.warning, tr(Str::SetupFolder),
-                    library_ok_ ? i18n::format(Str::SetupFolderInfo, library_dir_.c_str(), library_.items().size(),
-                                               db_.entries().size())
-                                : i18n::format(Str::SetupFolderAbsent, library_dir_.c_str())});
-    rows.push_back({keys_ok_ ? pal_.primary : pal_.warning, keys_ok_ ? tr(Str::SetupKeysOk) : tr(Str::NoteKeysTitle),
-                    keys_ok_ ? keys_path_ : i18n::format(Str::SetupKeysHelp, keys_path_.c_str())});
-    int y = kContentTop + 4;
-    for (const auto& r : rows) {
-        box(root_, 12, y + 4, 8, 8, r.color, 0);
-        text(root_, r.title, font(11, true), pal_.text, 28, y, kScreenW - 44);
-        text(root_, r.detail, font(9), dim_, 28, y + 15, kScreenW - 44, true);
-        y += 40;
-        box(root_, kInset + 2, y - 5, kInnerW - 4, 1, pal_.surface, 0);
+    rows.push_back({tr(Str::SettingsLanguage), "", std::string("< ") + i18n::native_name(i18n::language()) + " >", -1});
+    rows.push_back({tr(Str::SetupCap), cap_status_.empty() ? std::string(tr(Str::SetupNotChecked)) : clip(cap_status_, 70),
+                    "", cap_ok_ ? 0 : 2});
+    rows.push_back({keys_ok_ ? tr(Str::SetupKeysOk) : tr(Str::NoteKeysTitle),
+                    keys_ok_ ? short_path(keys_path_) : i18n::format(Str::SetupKeysHelp, short_path(keys_path_).c_str()),
+                    "", keys_ok_ ? 0 : 1});
+    rows.push_back({tr(Str::SetupFolder),
+                    library_ok_ ? i18n::format(Str::SetupFolderInfo, short_path(library_dir_).c_str(),
+                                               library_.items().size(), db_.entries().size())
+                                : i18n::format(Str::SetupFolderAbsent, short_path(library_dir_).c_str()),
+                    "", library_ok_ && db_ok_ ? 0 : 1});
+
+    const int rh = 30;
+    for (size_t i = 0; i < rows.size(); ++i) {
+        const int y = kContentTop + 3 + static_cast<int>(i) * rh;
+        const bool sel = static_cast<int>(i) == settings_sel_;
+        if (sel) {
+            box(root_, kInset + 1, y, kInnerW - 2, rh - 2, lv_color_hex(0x2a1417), 0);
+            cursor(kInset + 4, y + 10);
+        }
+        text(root_, rows[i].title, font(11, sel), pal_.text, 24, y + 1, 150);
+        if (!rows[i].detail.empty()) {
+            text(root_, rows[i].detail, font(9), dim_, 24, y + 15, kInnerW - 52);
+        }
+        if (!rows[i].value.empty()) {
+            lv_obj_t* v = text(root_, rows[i].value, font(11, true), pal_.primary, 0, 0);
+            lv_obj_align(v, LV_ALIGN_TOP_RIGHT, -(kInset + 8), y + 7);
+        }
+        if (rows[i].status >= 0) {
+            const lv_color_t c = rows[i].status == 0 ? pal_.primary : (rows[i].status == 1 ? pal_.warning : pal_.error);
+            box(root_, kScreenW - kInset - 16, y + 10, 8, 8, c, 0);
+        }
     }
-    render_footer({{"R", tr(Str::HintRecheck)}, {tr(Str::KeyEsc), tr(Str::HintBack)}, {"F2", tr(Str::HintLanguage)}});
+    render_footer({{tr(Str::KeyUpDown), tr(Str::HintChoose)},
+                   {tr(Str::KeyEnter), tr(Str::HintChange)},
+                   {tr(Str::KeyEsc), tr(Str::HintBack)}});
 }
 
 } // namespace app

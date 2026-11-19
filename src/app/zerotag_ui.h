@@ -48,7 +48,7 @@ public:
     void on_key_release(uint32_t key);
 
 private:
-    enum class Screen { Library, Catalogue, Detail, Emulating, Setup };
+    enum class Screen { Library, Catalogue, Detail, Emulating, Settings };
 
     // ---- data ----
     void load_data();
@@ -69,6 +69,7 @@ private:
     void stop_emulation();
     void tick();
     void check_hardware();
+    void cycle_language(int direction);
 
     bool handle_text_key(uint32_t key, std::string& query);
     void move_selection(int delta, size_t count, int& selected, int& top, int rows);
@@ -81,7 +82,7 @@ private:
     void render_catalogue();
     void render_detail();
     void render_emulating();
-    void render_setup();
+    void render_settings();
 
     lv_obj_t* box(lv_obj_t* parent, int x, int y, int w, int h, lv_color_t fill, int border_w = 0,
                   lv_color_t border = lv_color_black(), int radius = 0);
@@ -130,7 +131,7 @@ private:
 
     // ui state
     Screen screen_{Screen::Library};
-    Screen screen_before_setup_{Screen::Library};
+    Screen screen_before_settings_{Screen::Library};
     std::string lib_query_;
     std::string cat_query_;
     int lib_sel_{0};
@@ -142,6 +143,7 @@ private:
     bool banner_error_{false};
     uint32_t banner_until_{0};
     int pending_confirm_{0}; // 1: reset, 2: delete (second press confirms)
+    int settings_sel_{0};
     std::string cap_status_;
     bool cap_ok_{false};
 
