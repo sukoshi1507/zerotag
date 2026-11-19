@@ -13,7 +13,6 @@
 #include "emulation_session.h"
 #include "lvgl.h"
 #include "st25r3916.h"
-#include "theme.h"
 
 #include <cstdint>
 #include <functional>
@@ -23,6 +22,15 @@
 #include <utility>
 
 namespace app {
+
+// Famicom-inspired palette: cream, Famicom red, gold on a dark warm background.
+struct UiPalette {
+    lv_color_t background, surface, bar, button, border; // surfaces and separators
+    lv_color_t text, cream, dark_red;
+    lv_color_t accent;  // Famicom red: cursor, primary button, frame
+    lv_color_t primary; // gold: positive state, highlights
+    lv_color_t warning, error, info;
+};
 
 class ZeroTagUi {
 public:
@@ -81,6 +89,14 @@ private:
                    int y, int w = 0, bool wrap = false);
     lv_obj_t* thumb(lv_obj_t* parent, const amiibo::Entry* entry, int x, int y, int h);
     void search_field(lv_obj_t* parent, const std::string& query, const std::string& placeholder, bool focused);
+    void list_row(int y, bool selected, const amiibo::Entry* entry, const std::string& name, const std::string& sub,
+                  const std::string& badge);
+    void scrollbar(size_t count, int first);
+    void triforce(int x, int y);
+    void cursor(int x, int y);
+    void draw_frame();
+    void button(int x, int y, int w, const std::string& label, lv_color_t fill, lv_color_t border, lv_color_t color,
+                bool bold);
     const lv_font_t* font(int px, bool bold = false);
 
     static void tick_cb(lv_timer_t* timer);
@@ -89,7 +105,7 @@ private:
     bool dark_;
     std::function<void()> request_quit_;
     std::function<void(const std::string&)> persist_language_;
-    view::ThemePalette pal_{};
+    UiPalette pal_{};
     lv_color_t dim_{};
     lv_obj_t* root_{nullptr};
     lv_timer_t* timer_{nullptr};

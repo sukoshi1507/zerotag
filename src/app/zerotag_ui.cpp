@@ -28,9 +28,13 @@ namespace {
 
 constexpr int kScreenW = 320;
 constexpr int kScreenH = 170;
-constexpr int kBarH = 20;
-constexpr int kFootH = 20;
-constexpr int kListW = 188;
+constexpr int kInset = 4;                     // width of the pixel frame
+constexpr int kBarH = 18;
+constexpr int kFootH = 18;
+constexpr int kInnerW = kScreenW - 2 * kInset; // 312
+constexpr int kContentTop = kInset + kBarH;    // 22
+constexpr int kFootTop = kScreenH - kInset - kFootH; // 148
+constexpr int kListW = 190;
 constexpr int kRowH = 26;
 constexpr int kListTop = 44; // below the search field
 constexpr int kRows = 4;
@@ -63,8 +67,21 @@ ZeroTagUi::ZeroTagUi(AssetManager& assets, bool dark_mode, std::function<void()>
       dark_(dark_mode),
       request_quit_(std::move(request_quit)),
       persist_language_(std::move(persist_language)) {
-    pal_ = view::palette(dark_);
-    dim_ = lv_color_mix(pal_.text, pal_.background, 150);
+    (void)dark_; // the Famicom look is dark only
+    pal_.background = lv_color_hex(0x101014);
+    pal_.surface = lv_color_hex(0x1a1518);
+    pal_.bar = lv_color_hex(0x0b0b10);
+    pal_.button = lv_color_hex(0x0b0b10);
+    pal_.border = lv_color_hex(0x4a3a3c);
+    pal_.text = lv_color_hex(0xf1ebd8);
+    pal_.cream = lv_color_hex(0xece6d3);
+    pal_.dark_red = lv_color_hex(0x6b2a30);
+    pal_.accent = lv_color_hex(0xc8202f);
+    pal_.primary = lv_color_hex(0xf3c93a);
+    pal_.warning = lv_color_hex(0xf3c93a);
+    pal_.error = lv_color_hex(0xe88080);
+    pal_.info = lv_color_hex(0xece6d3);
+    dim_ = lv_color_hex(0xa79f8e);
 }
 
 ZeroTagUi::~ZeroTagUi() {
@@ -642,52 +659,136 @@ lv_obj_t* ZeroTagUi::thumb(lv_obj_t* parent, const amiibo::Entry* entry, int x, 
     return holder;
 }
 
-void ZeroTagUi::search_field(lv_obj_t* parent, const std::string& query, const std::string& placeholder,
-                             bool focused) {
-    lv_obj_t* f = box(parent, 6, 23, kListW - 12, 18, pal_.button, 1, focused ? pal_.primary : pal_.border, 4);
-    if (query.empty()) {
-        text(f, placeholder, font(10), dim_, 6, 2, kListW - 26);
-    } else {
-        text(f, query + "_", font(10), pal_.text, 6, 2, kListW - 26);
+// ---------------------------------------------------------------------------
+// Famicom-style building blocks
+// ---------------------------------------------------------------------------
+
+void ZeroTagUi::triforce(int x, int y) {
+    // 9x4 pixel triforce drawn with 2x2 boxes.
+    static const char* const rows[4] = {"....Y....", "...YYY...", "..Y...Y..", ".YYY.YYY."};
+    for (int r = 0; r < 4; ++r) {
+        for (int c = 0; c < 9; ++c) {
+            if (rows[r][c] == 'Y') {
+                box(root_, x + c * 2, y + r * 2, 2, 2, pal_.primary, 0);
+            }
+        }
     }
 }
 
+void ZeroTagUi::cursor(int x, int y) {
+    // 8x7 pointing-right triangle, NES menu style.
+    box(root_, x, y, 2, 7, pal_.accent, 0);
+    box(root_, x + 2, y + 1, 2, 5, pal_.accent, 0);
+    box(root_, x + 4, y + 2, 2, 3, pal_.accent, 0);
+    box(root_, x + 6, y + 3, 2, 1, pal_.accent, 0);
+}
+
+void ZeroTagUi::draw_frame() {
+    // cream outline (1 px), red band (2 px), dark line (1 px); the screen corners are notched.
+    const lv_color_t cream = pal_.cream;
+    box(root_, 0, 0, kScreenW, 1, cream, 0);
+    box(root_, 0, kScreenH - 1, kScreenW, 1, cream, 0);
+    box(root_, 0, 0, 1, kScreenH, cream, 0);
+    box(root_, kScreenW - 1, 0, 1, kScreenH, cream, 0);
+    box(root_, 1, 1, kScreenW - 2, 2, pal_.accent, 0);
+    box(root_, 1, kScreenH - 3, kScreenW - 2, 2, pal_.accent, 0);
+    box(root_, 1, 1, 2, kScreenH - 2, pal_.accent, 0);
+    box(root_, kScreenW - 3, 1, 2, kScreenH - 2, pal_.accent, 0);
+    box(root_, 3, 3, kScreenW - 6, 1, pal_.background, 0);
+    box(root_, 3, kScreenH - 4, kScreenW - 6, 1, pal_.background, 0);
+    box(root_, 3, 3, 1, kScreenH - 6, pal_.background, 0);
+    box(root_, kScreenW - 4, 3, 1, kScreenH - 6, pal_.background, 0);
+    // notched corners and gold studs
+    box(root_, 0, 0, 2, 2, pal_.background, 0);
+    box(root_, kScreenW - 2, 0, 2, 2, pal_.background, 0);
+    box(root_, 0, kScreenH - 2, 2, 2, pal_.background, 0);
+    box(root_, kScreenW - 2, kScreenH - 2, 2, 2, pal_.background, 0);
+    box(root_, kInset, kInset, 2, 2, pal_.primary, 0);
+    box(root_, kScreenW - kInset - 2, kInset, 2, 2, pal_.primary, 0);
+    box(root_, kInset, kScreenH - kInset - 2, 2, 2, pal_.primary, 0);
+    box(root_, kScreenW - kInset - 2, kScreenH - kInset - 2, 2, 2, pal_.primary, 0);
+}
+
+void ZeroTagUi::button(int x, int y, int w, const std::string& label, lv_color_t fill, lv_color_t border,
+                       lv_color_t color, bool bold) {
+    lv_obj_t* b = box(root_, x, y, w, 20, fill, 2, border, 0);
+    lv_obj_t* l = text(b, label, font(10, bold), color, 0, 0);
+    lv_obj_align(l, LV_ALIGN_CENTER, 0, 0);
+}
+
+void ZeroTagUi::search_field(lv_obj_t* parent, const std::string& query, const std::string& placeholder,
+                             bool focused) {
+    lv_obj_t* f = box(parent, 10, 26, 172, 16, pal_.button, 2, focused ? pal_.accent : pal_.cream, 0);
+    if (query.empty()) {
+        text(f, placeholder, font(10), dim_, 3, 0, 160);
+    } else {
+        text(f, query + "_", font(10), pal_.text, 3, 0, 160);
+    }
+}
+
+void ZeroTagUi::list_row(int y, bool selected, const amiibo::Entry* entry, const std::string& name,
+                         const std::string& sub, const std::string& badge) {
+    if (selected) {
+        box(root_, kInset + 1, y, kListW - kInset - 3, kRowH - 2, lv_color_hex(0x2a1417), 0);
+        cursor(kInset + 4, y + 8);
+    }
+    thumb(root_, entry, 20, y + 2, 20);
+    const int tw = kListW - 36 - (badge.empty() ? 8 : 50);
+    text(root_, name, font(11, selected), pal_.text, 36, y + 2, tw);
+    text(root_, sub, font(9), dim_, 36, y + 14, kListW - 44);
+    if (!badge.empty()) {
+        text(root_, badge, font(9), pal_.primary, kListW - 50, y + 4, 44);
+    }
+}
+
+void ZeroTagUi::scrollbar(size_t count, int first) {
+    if (count <= static_cast<size_t>(kRows)) {
+        return;
+    }
+    const int track = kRows * kRowH;
+    const int bar_h = std::max(6, track * kRows / static_cast<int>(count));
+    const int bar_y = kListTop + (track - bar_h) * first / std::max(1, static_cast<int>(count) - kRows);
+    box(root_, kListW - 6, bar_y, 2, bar_h, pal_.border, 0);
+}
+
 void ZeroTagUi::render_bar(const std::string& title, const std::string& subtitle) {
-    box(root_, 0, 0, kScreenW, kBarH, pal_.surface, 0);
-    box(root_, 0, kBarH - 1, kScreenW, 1, pal_.border, 0);
-    lv_obj_t* t = text(root_, title, font(12, true), pal_.primary, 6, 2);
+    box(root_, kInset, kInset, kInnerW, kBarH, pal_.surface, 0);
+    box(root_, kInset, kInset + kBarH - 1, kInnerW, 1, pal_.accent, 0);
+    triforce(kInset + 6, kInset + 5);
+    lv_obj_t* t = text(root_, title, font(12, true), pal_.text, kInset + 30, kInset + 2);
     lv_obj_update_layout(t);
-    text(root_, subtitle, font(10), dim_, 6 + lv_obj_get_width(t) + 6, 4, 150);
+    const int sx = kInset + 30 + lv_obj_get_width(t) + 6;
+    text(root_, subtitle, font(10), dim_, sx, kInset + 3, kScreenW - sx - 50);
 
     const auto status = platform::read_device_status();
     if (status.battery_present && status.battery_percent >= 0) {
         char b[16];
         std::snprintf(b, sizeof(b), "%d%%%s", status.battery_percent, status.battery_charging ? "+" : "");
-        lv_obj_t* l = text(root_, b, font(10), pal_.text, 0, 4);
-        lv_obj_align(l, LV_ALIGN_TOP_RIGHT, -6, 4);
+        lv_obj_t* l = text(root_, b, font(10, true), pal_.primary, 0, 0);
+        lv_obj_align(l, LV_ALIGN_TOP_RIGHT, -(kInset + 6), kInset + 3);
     }
 }
 
 void ZeroTagUi::render_footer(const std::vector<std::pair<std::string, std::string>>& hints) {
-    const int y = kScreenH - kFootH;
-    box(root_, 0, y, kScreenW, kFootH, pal_.bar, 0);
-    box(root_, 0, y, kScreenW, 1, pal_.border, 0);
+    box(root_, kInset, kFootTop, kInnerW, kFootH, pal_.bar, 0);
+    box(root_, kInset, kFootTop, kInnerW, 1, pal_.border, 0);
     if (!banner_.empty()) {
-        text(root_, banner_, font(10), banner_error_ ? pal_.error : pal_.primary, 6, y + 4, kScreenW - 12);
+        text(root_, banner_, font(10), banner_error_ ? pal_.error : pal_.primary, kInset + 6, kFootTop + 3,
+             kInnerW - 12);
         return;
     }
-    int x = 6;
+    int x = kInset + 6;
     for (const auto& hint : hints) {
-        lv_obj_t* key = text(root_, hint.first, font(9), pal_.text, 0, 0);
-        lv_obj_update_layout(key);
-        const int kw = lv_obj_get_width(key) + 8;
-        lv_obj_delete(key);
-        lv_obj_t* cap = box(root_, x, y + 4, kw, 13, pal_.surface, 1, pal_.border, 3);
+        lv_obj_t* probe = text(root_, hint.first, font(9), pal_.text, 0, 0);
+        lv_obj_update_layout(probe);
+        const int kw = lv_obj_get_width(probe) + 8;
+        lv_obj_delete(probe);
+        lv_obj_t* cap = box(root_, x, kFootTop + 3, kw, 13, pal_.surface, 2, pal_.cream, 0);
         lv_obj_t* kl = text(cap, hint.first, font(9), pal_.text, 0, 0);
         lv_obj_align(kl, LV_ALIGN_CENTER, 0, 0);
-        lv_obj_t* label = text(root_, hint.second, font(9), dim_, x + kw + 3, y + 4);
+        lv_obj_t* label = text(root_, hint.second, font(9), dim_, x + kw + 3, kFootTop + 3);
         lv_obj_update_layout(label);
-        x += kw + 3 + lv_obj_get_width(label) + 9;
+        x += kw + 3 + lv_obj_get_width(label) + 7;
     }
 }
 
@@ -717,19 +818,20 @@ void ZeroTagUi::render() {
         render_setup();
         break;
     }
+    draw_frame();
 }
 
 void ZeroTagUi::render_library() {
     const auto items = visible_items();
-    render_bar("ZeroTag", std::string(tr(Str::LibraryTitle)) + " - " + std::to_string(library_.items().size()));
+    render_bar("ZEROTAG", std::string(tr(Str::LibraryTitle)) + " - " + std::to_string(library_.items().size()));
     search_field(root_, lib_query_, tr(Str::FilterPlaceholder), !lib_query_.empty());
-    box(root_, kListW, kBarH, 1, kScreenH - kBarH - kFootH, pal_.border, 0);
+    box(root_, kListW, kContentTop + 2, 2, kFootTop - kContentTop - 2, pal_.border, 0);
 
     if (items.empty()) {
         std::string line1 = library_.items().empty() ? tr(Str::LibraryEmpty) : tr(Str::NoResult);
         std::string line2 = !keys_ok_ ? tr(Str::KeysMissingF1) : tr(Str::LibraryHowTo);
-        text(root_, line1, font(10), pal_.text, 8, 62, kListW - 16, true);
-        text(root_, line2, font(9), dim_, 8, 80, kListW - 16, true);
+        text(root_, line1, font(10), pal_.text, 12, 64, kListW - 24, true);
+        text(root_, line2, font(9), dim_, 12, 86, kListW - 24, true);
     }
 
     const int first = std::min(lib_top_, std::max(0, static_cast<int>(items.size()) - 1));
@@ -739,39 +841,27 @@ void ZeroTagUi::render_library() {
             break;
         }
         const amiibo::Item& item = *items[static_cast<size_t>(idx)];
-        const bool sel = idx == lib_sel_;
-        const int y = kListTop + row * kRowH;
-        if (sel) {
-            box(root_, 1, y, kListW - 1, kRowH - 2, lv_color_mix(pal_.primary, pal_.background, 45), 0, pal_.border, 3);
-        }
-        thumb(root_, item.entry, 6, y + 2, kRowH - 6);
-        text(root_, item_name(item), font(11, sel), sel ? pal_.primary : pal_.text, 28, y + 2, kListW - 36);
-        text(root_, item.entry ? item.entry->amiibo_series : item.uid, font(9), dim_, 28, y + 14, kListW - 36);
+        list_row(kListTop + row * kRowH, idx == lib_sel_, item.entry, item_name(item),
+                 item.entry ? item.entry->amiibo_series : item.uid, "");
     }
-    if (items.size() > static_cast<size_t>(kRows)) {
-        const int track = kRows * kRowH;
-        const int bar_h = std::max(6, track * kRows / static_cast<int>(items.size()));
-        const int bar_y = kListTop + (track - bar_h) * first / std::max(1, static_cast<int>(items.size()) - kRows);
-        box(root_, kListW - 4, bar_y, 2, bar_h, pal_.border, 0, pal_.border, 1);
-    }
+    scrollbar(items.size(), first);
 
-    // preview
     if (lib_sel_ < static_cast<int>(items.size())) {
         const amiibo::Item& item = *items[static_cast<size_t>(lib_sel_)];
-        thumb(root_, item.entry, kListW + 8, 28, 70);
-        const int tx = kListW + 8 + 70 * 51 / 88 + 8;
-        const int tw = kScreenW - tx - 6;
-        text(root_, item_name(item), font(12, true), pal_.text, tx, 26, tw);
+        const int px = kListW + 8;
+        box(root_, px, 26, 36, 62, pal_.surface, 2, pal_.cream, 0);
+        thumb(root_, item.entry, px + 2 + 2, 30, 54);
+        text(root_, item_name(item), font(11, true), pal_.text, px + 42, 26, kScreenW - px - 42 - 8, true);
+        const int tw = kScreenW - px - 8;
         if (item.entry) {
-            text(root_, item.entry->amiibo_series, font(9), dim_, tx, 44, tw);
-            text(root_, item.entry->game_series, font(9), dim_, tx, 57, tw);
-            text(root_, item.entry->type, font(9), dim_, tx, 70, tw);
+            text(root_, item.entry->amiibo_series, font(9), dim_, px, 92, tw);
+            text(root_, item.entry->game_series, font(9), dim_, px, 104, tw);
         }
-        text(root_, item.uid, font(9), pal_.text, kListW + 8, 104, kScreenW - kListW - 12);
+        text(root_, item.uid, font(9), pal_.text, px, 118, tw);
         const char* sig = !item.signature_checked ? tr(Str::SigUnchecked)
                                                   : (item.signature_ok ? tr(Str::SigValid) : tr(Str::SigInvalid));
         text(root_, sig, font(9), !item.signature_checked ? dim_ : (item.signature_ok ? pal_.primary : pal_.error),
-             kListW + 8, 118, kScreenW - kListW - 12);
+             px, 131, tw);
     }
     render_footer({{tr(Str::KeyUpDown), tr(Str::HintChoose)},
                    {tr(Str::KeyEnter), tr(Str::HintOpen)},
@@ -784,13 +874,13 @@ void ZeroTagUi::render_catalogue() {
     const auto entries = visible_entries();
     render_bar(tr(Str::CatalogueTitle), std::to_string(entries.size()) + " / " + std::to_string(db_.entries().size()));
     search_field(root_, cat_query_, tr(Str::SearchPlaceholder), true);
-    box(root_, kListW, kBarH, 1, kScreenH - kBarH - kFootH, pal_.border, 0);
+    box(root_, kListW, kContentTop + 2, 2, kFootTop - kContentTop - 2, pal_.border, 0);
 
     if (!db_ok_) {
-        text(root_, tr(Str::CatalogueUnreadable), font(10), pal_.error, 8, 62, kListW - 16);
-        text(root_, clip(db_error_, 60), font(9), dim_, 8, 78, kListW - 16);
+        text(root_, tr(Str::CatalogueUnreadable), font(10), pal_.error, 12, 64, kListW - 24);
+        text(root_, clip(db_error_, 60), font(9), dim_, 12, 80, kListW - 24, true);
     } else if (entries.empty()) {
-        text(root_, tr(Str::NoResult), font(10), pal_.text, 8, 62, kListW - 16);
+        text(root_, tr(Str::NoResult), font(10), pal_.text, 12, 64, kListW - 24);
     }
 
     auto owned = [&](const amiibo::Entry* e) {
@@ -809,45 +899,30 @@ void ZeroTagUi::render_catalogue() {
             break;
         }
         const amiibo::Entry* e = entries[static_cast<size_t>(idx)];
-        const bool sel = idx == cat_sel_;
-        const int y = kListTop + row * kRowH;
-        if (sel) {
-            box(root_, 1, y, kListW - 1, kRowH - 2, lv_color_mix(pal_.primary, pal_.background, 45), 0, pal_.border, 3);
-        }
-        thumb(root_, e, 6, y + 2, kRowH - 6);
-        const int w = owned(e) ? kListW - 82 : kListW - 36;
-        text(root_, e->name, font(11, sel), sel ? pal_.primary : pal_.text, 28, y + 2, w);
-        text(root_, e->amiibo_series, font(9), dim_, 28, y + 14, kListW - 36);
-        if (owned(e)) {
-            text(root_, tr(Str::Owned), font(9), pal_.primary, kListW - 48, y + 4);
-        }
+        list_row(kListTop + row * kRowH, idx == cat_sel_, e, e->name, e->amiibo_series,
+                 owned(e) ? tr(Str::Owned) : "");
     }
-    if (entries.size() > static_cast<size_t>(kRows)) {
-        const int track = kRows * kRowH;
-        const int bar_h = std::max(6, track * kRows / static_cast<int>(entries.size()));
-        const int bar_y = kListTop + (track - bar_h) * first / std::max(1, static_cast<int>(entries.size()) - kRows);
-        box(root_, kListW - 4, bar_y, 2, bar_h, pal_.border, 0, pal_.border, 1);
-    }
+    scrollbar(entries.size(), first);
 
     if (cat_sel_ < static_cast<int>(entries.size())) {
         const amiibo::Entry* e = entries[static_cast<size_t>(cat_sel_)];
-        thumb(root_, e, kListW + 8, 28, 70);
-        const int tx = kListW + 8 + 70 * 51 / 88 + 8;
-        const int tw = kScreenW - tx - 6;
-        text(root_, e->name, font(12, true), pal_.text, tx, 26, tw);
-        text(root_, e->amiibo_series, font(9), dim_, tx, 44, tw);
-        text(root_, e->game_series, font(9), dim_, tx, 57, tw);
-        text(root_, e->type, font(9), dim_, tx, 70, tw);
-        lv_obj_t* note = box(root_, kListW + 6, 104, kScreenW - kListW - 12, 44, pal_.button, 1, pal_.border, 4);
+        const int px = kListW + 8;
+        box(root_, px, 26, 36, 62, pal_.surface, 2, pal_.cream, 0);
+        thumb(root_, e, px + 2 + 2, 30, 54);
+        text(root_, e->name, font(11, true), pal_.text, px + 42, 26, kScreenW - px - 42 - 8, true);
+        const int tw = kScreenW - px - 8;
+        text(root_, e->amiibo_series, font(9), dim_, px, 92, tw);
+        lv_obj_t* note = box(root_, px, 106, tw, 40, pal_.button, 2, pal_.border, 0);
+        const int nw = tw - 10;
         if (!keys_ok_) {
-            text(note, tr(Str::NoteKeysTitle), font(9, true), pal_.warning, 6, 4, kScreenW - kListW - 24);
-            text(note, tr(Str::NoteKeysBody), font(9), dim_, 6, 18, kScreenW - kListW - 24, true);
+            text(note, tr(Str::NoteKeysTitle), font(9, true), pal_.warning, 3, 1, nw);
+            text(note, tr(Str::NoteKeysBody), font(9), dim_, 3, 13, nw, true);
         } else if (owned(e)) {
-            text(note, tr(Str::NoteOwnedTitle), font(9, true), pal_.primary, 6, 4, kScreenW - kListW - 24);
-            text(note, tr(Str::NoteOwnedBody), font(9), dim_, 6, 18, kScreenW - kListW - 24, true);
+            text(note, tr(Str::NoteOwnedTitle), font(9, true), pal_.primary, 3, 1, nw);
+            text(note, tr(Str::NoteOwnedBody), font(9), dim_, 3, 13, nw, true);
         } else {
-            text(note, tr(Str::NoteNewTitle), font(9, true), pal_.warning, 6, 4, kScreenW - kListW - 24);
-            text(note, tr(Str::NoteNewBody), font(9), dim_, 6, 18, kScreenW - kListW - 24, true);
+            text(note, tr(Str::NoteNewTitle), font(9, true), pal_.warning, 3, 1, nw);
+            text(note, tr(Str::NoteNewBody), font(9), dim_, 3, 13, nw, true);
         }
     }
     render_footer({{tr(Str::KeyUpDown), tr(Str::HintChoose)},
@@ -865,28 +940,29 @@ void ZeroTagUi::render_detail() {
         }
     }
     if (!item) {
-        render_bar("ZeroTag", tr(Str::NotFound));
+        render_bar("ZEROTAG", tr(Str::NotFound));
         render_footer({{tr(Str::KeyEsc), tr(Str::HintBack)}});
         return;
     }
     render_bar(item_name(*item), item->entry ? item->entry->amiibo_series : "");
 
-    box(root_, 8, 26, 86, 120, pal_.button, 1, pal_.border, 6);
-    thumb(root_, item->entry, 8 + (86 - 96 * 51 / 88) / 2, 38, 96);
+    box(root_, 12, 28, 84, 116, pal_.surface, 2, pal_.cream, 0);
+    thumb(root_, item->entry, 12 + (84 - 55) / 2, 38, 96);
 
-    const int x = 104;
-    const int w = kScreenW - x - 8;
-    text(root_, item_name(*item), font(14, true), pal_.text, x, 24, w);
-    std::string sub = item->entry ? item->entry->game_series + " - " + item->entry->type : std::string(tr(Str::UnknownCharacter));
+    const int x = 106;
+    const int w = kScreenW - x - 10;
+    text(root_, item_name(*item), font(14, true), pal_.text, x, 25, w);
+    const std::string sub =
+        item->entry ? item->entry->game_series + " - " + item->entry->type : std::string(tr(Str::UnknownCharacter));
     text(root_, sub, font(9), dim_, x, 44, w);
 
     const char* sig = !item->signature_checked ? tr(Str::SigUnchecked)
                                                : (item->signature_ok ? tr(Str::SigValid) : tr(Str::SigInvalid));
     const lv_color_t sig_color = !item->signature_checked ? dim_ : (item->signature_ok ? pal_.primary : pal_.error);
-    lv_obj_t* chip1 = box(root_, x, 60, 112, 14, pal_.button, 1, sig_color, 7);
-    lv_obj_t* c1 = text(chip1, sig, font(9), sig_color, 0, 0);
+    lv_obj_t* chip1 = box(root_, x, 59, 120, 15, pal_.button, 2, sig_color, 0);
+    lv_obj_t* c1 = text(chip1, sig, font(9), sig_color, 0, 0, 112);
     lv_obj_align(c1, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_t* chip2 = box(root_, x + 118, 60, 56, 14, pal_.button, 1, pal_.border, 7);
+    lv_obj_t* chip2 = box(root_, x + 126, 59, 58, 15, pal_.button, 2, pal_.cream, 0);
     lv_obj_t* c2 = text(chip2, "NTAG215", font(9), pal_.text, 0, 0);
     lv_obj_align(c2, LV_ALIGN_CENTER, 0, 0);
 
@@ -895,24 +971,19 @@ void ZeroTagUi::render_detail() {
     const struct {
         const char* k;
         std::string v;
-    } rows[] = {{"UID", item->uid}, {"Id", id}, {"Fichier", base_name(item->path)}};
+    } rows[] = {{"UID", item->uid}, {"Id", id}, {"File", base_name(item->path)}};
     int y = 80;
     for (const auto& r : rows) {
-        text(root_, r.k, font(9), dim_, x, y);
-        text(root_, clip(r.v, 28), font(9), pal_.text, x + 40, y, w - 40);
+        text(root_, r.k, font(9), dim_, x, y, 36);
+        text(root_, clip(r.v, 30), font(9), pal_.text, x + 38, y, w - 38);
         y += 13;
     }
 
-    lv_obj_t* emu = box(root_, x, 126, 104, 20, pal_.primary, 0, pal_.primary, 4);
-    lv_obj_t* el = text(emu, tr(Str::ButtonEmulate), font(10, true), pal_.background, 0, 0);
-    lv_obj_align(el, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_t* reset = box(root_, x + 108, 126, 54, 20, pal_.button, 1,
-                          pending_confirm_ == 1 ? pal_.warning : pal_.border, 4);
-    lv_obj_t* rl = text(reset, pending_confirm_ == 1 ? tr(Str::ButtonResetAsk) : tr(Str::ButtonReset), font(10), pal_.text, 0, 0);
-    lv_obj_align(rl, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_t* del = box(root_, x + 166, 126, 38, 20, pal_.button, 1, pending_confirm_ == 2 ? pal_.error : pal_.border, 4);
-    lv_obj_t* dl = text(del, pending_confirm_ == 2 ? tr(Str::ButtonDeleteAsk) : tr(Str::ButtonDelete), font(10), pal_.error, 0, 0);
-    lv_obj_align(dl, LV_ALIGN_CENTER, 0, 0);
+    button(x, 123, 108, tr(Str::ButtonEmulate), pal_.accent, pal_.cream, pal_.text, true);
+    button(x + 112, 123, 54, pending_confirm_ == 1 ? tr(Str::ButtonResetAsk) : tr(Str::ButtonReset), pal_.surface,
+           pending_confirm_ == 1 ? pal_.warning : pal_.cream, pal_.text, false);
+    button(x + 170, 123, 40, pending_confirm_ == 2 ? tr(Str::ButtonDeleteAsk) : tr(Str::ButtonDelete), pal_.surface,
+           pending_confirm_ == 2 ? pal_.error : lv_color_hex(0xa8606a), pal_.error, false);
 
     render_footer({{tr(Str::KeyEnter), tr(Str::HintEmulate)},
                    {"R", tr(Str::HintNewUid)},
@@ -930,54 +1001,54 @@ void ZeroTagUi::render_emulating() {
     const bool running = session_ != nullptr;
     const bool field = running && session_->stats().field.load();
     const bool selected = running && session_->stats().selected.load();
-    const lv_color_t accent = !emu_error_.empty() ? pal_.error : (selected ? pal_.primary : pal_.info);
+    const lv_color_t accent = !emu_error_.empty() ? pal_.error : (selected ? pal_.primary : pal_.cream);
 
     render_bar(tr(Str::EmulationTitle), item ? item_name(*item) : "");
 
     // rings and thumbnail
-    const int cx = 66, cy = 86;
-    box(root_, cx - 46, cy - 46, 92, 92, pal_.background, 1, selected ? accent : pal_.border, 46);
-    box(root_, cx - 37, cy - 37, 74, 74, pal_.background, 1, field ? accent : pal_.border, 37);
-    box(root_, cx - 28, cy - 28, 56, 56, pal_.surface, selected ? 2 : 1, accent, 28);
+    const int cx = 68, cy = 86;
+    box(root_, cx - 56, cy - 56, 112, 112, pal_.background, 2, selected ? pal_.accent : pal_.dark_red, 56);
+    box(root_, cx - 44, cy - 44, 88, 88, pal_.background, 2, field ? pal_.accent : pal_.dark_red, 44);
+    box(root_, cx - 28, cy - 28, 56, 56, pal_.surface, 2, pal_.cream, 28);
     if (item) {
-        thumb(root_, item->entry, cx - 16, cy - 22, 46);
+        thumb(root_, item->entry, cx - 14, cy - 22, 46);
     }
 
-    const int x = 132;
-    const int w = kScreenW - x - 8;
+    const int x = 138;
+    const int w = kScreenW - x - 10;
     if (!emu_error_.empty()) {
-        text(root_, tr(Str::EmuFailed), font(13, true), pal_.error, x, 30, w);
-        text(root_, clip(emu_error_, 90), font(9), pal_.text, x, 50, w, true);
+        text(root_, tr(Str::EmuFailed), font(12, true), pal_.error, x, 28, w, true);
+        text(root_, clip(emu_error_, 90), font(9), pal_.text, x, 48, w, true);
         const bool perms = emu_error_.find("Permission") != std::string::npos ||
-                           emu_error_.find("denied") != std::string::npos || emu_error_.find("open") != std::string::npos ||
-                           emu_error_.find("GPIO") != std::string::npos;
+                           emu_error_.find("denied") != std::string::npos ||
+                           emu_error_.find("open") != std::string::npos || emu_error_.find("GPIO") != std::string::npos;
         const bool overlay = emu_error_.find("spidev") != std::string::npos ||
                              emu_error_.find("No such file") != std::string::npos;
-        text(root_, overlay ? tr(Str::ErrSpi) : (perms ? tr(Str::ErrPerms) : tr(Str::ErrGeneric)), font(9), dim_, x, 88,
-             w, true);
+        text(root_, overlay ? tr(Str::ErrSpi) : (perms ? tr(Str::ErrPerms) : tr(Str::ErrGeneric)), font(9), dim_, x,
+             88, w, true);
     } else {
         text(root_, selected ? tr(Str::EmuConnected) : (field ? tr(Str::EmuDetected) : tr(Str::EmuWaiting)),
-             font(13, true), accent, x, 28, w, true);
-        text(root_, selected ? tr(Str::EmuConnHelp) : tr(Str::EmuWaitHelp),
-             font(9), dim_, x, 48, w, true);
+             font(12, true), accent, x, 28, w, true);
+        text(root_, selected ? tr(Str::EmuConnHelp) : tr(Str::EmuWaitHelp), font(9), dim_, x, 46, w, true);
         const uint32_t reads = running ? session_->stats().reads.load() : 0;
         const uint32_t writes = running ? session_->stats().writes.load() : 0;
         const uint32_t secs = lv_tick_elaps(emu_started_) / 1000u;
         char b[48];
-        text(root_, tr(Str::EmuReads), font(9), dim_, x, 92, 56);
+        text(root_, tr(Str::EmuReads), font(9), dim_, x, 94, 60);
         std::snprintf(b, sizeof(b), "%u", reads);
-        text(root_, b, font(9), pal_.text, x + 58, 92);
-        text(root_, tr(Str::EmuWrites), font(9), dim_, x, 105, 56);
+        text(root_, b, font(9), pal_.text, x + 64, 94);
+        text(root_, tr(Str::EmuWrites), font(9), dim_, x, 108, 60);
         const std::string writes_text = writes ? i18n::format(Str::EmuWritesPending, writes) : std::to_string(writes);
-        text(root_, writes_text, font(9), writes ? pal_.warning : pal_.text, x + 58, 105, w - 58);
-        text(root_, tr(Str::EmuDuration), font(9), dim_, x, 118, 56);
+        text(root_, writes_text, font(9), writes ? pal_.warning : pal_.text, x + 64, 108, w - 64);
+        text(root_, tr(Str::EmuDuration), font(9), dim_, x, 122, 60);
         std::snprintf(b, sizeof(b), "%02u:%02u", secs / 60, secs % 60);
-        text(root_, b, font(9), pal_.text, x + 58, 118);
+        text(root_, b, font(9), pal_.text, x + 64, 122);
     }
     if (banner_.empty()) {
-        text(root_, tr(Str::EmuFooterNote), font(9), dim_, 6, kScreenH - kFootH + 4, 228);
-        box(root_, 0, kScreenH - kFootH, kScreenW, 1, pal_.border, 0);
-        lv_obj_t* cap = box(root_, kScreenW - 62, kScreenH - kFootH + 4, 56, 13, pal_.surface, 1, pal_.border, 3);
+        box(root_, kInset, kFootTop, kInnerW, kFootH, pal_.bar, 0);
+        box(root_, kInset, kFootTop, kInnerW, 1, pal_.border, 0);
+        text(root_, tr(Str::EmuFooterNote), font(9), dim_, kInset + 6, kFootTop + 3, 216);
+        lv_obj_t* cap = box(root_, kScreenW - kInset - 74, kFootTop + 3, 68, 13, pal_.surface, 2, pal_.cream, 0);
         lv_obj_t* l = text(cap, tr(Str::EmuStopButton), font(9), pal_.text, 0, 0);
         lv_obj_align(l, LV_ALIGN_CENTER, 0, 0);
     } else {
@@ -986,7 +1057,7 @@ void ZeroTagUi::render_emulating() {
 }
 
 void ZeroTagUi::render_setup() {
-    render_bar("ZeroTag", tr(Str::SetupTitle));
+    render_bar("ZEROTAG", tr(Str::SetupTitle));
     struct Row {
         lv_color_t color;
         std::string title;
@@ -1001,13 +1072,13 @@ void ZeroTagUi::render_setup() {
                                 : i18n::format(Str::SetupFolderAbsent, library_dir_.c_str())});
     rows.push_back({keys_ok_ ? pal_.primary : pal_.warning, keys_ok_ ? tr(Str::SetupKeysOk) : tr(Str::NoteKeysTitle),
                     keys_ok_ ? keys_path_ : i18n::format(Str::SetupKeysHelp, keys_path_.c_str())});
-    int y = 24;
+    int y = kContentTop + 4;
     for (const auto& r : rows) {
-        box(root_, 8, y + 3, 8, 8, r.color, 0, r.color, 4);
-        text(root_, r.title, font(11, true), pal_.text, 24, y, kScreenW - 32);
-        text(root_, r.detail, font(9), dim_, 24, y + 15, kScreenW - 32, true);
+        box(root_, 12, y + 4, 8, 8, r.color, 0);
+        text(root_, r.title, font(11, true), pal_.text, 28, y, kScreenW - 44);
+        text(root_, r.detail, font(9), dim_, 28, y + 15, kScreenW - 44, true);
         y += 40;
-        box(root_, 0, y - 6, kScreenW, 1, pal_.surface, 0);
+        box(root_, kInset + 2, y - 5, kInnerW - 4, 1, pal_.surface, 0);
     }
     render_footer({{"R", tr(Str::HintRecheck)}, {tr(Str::KeyEsc), tr(Str::HintBack)}, {"F2", tr(Str::HintLanguage)}});
 }

@@ -188,7 +188,7 @@ int Application::run() {
     ApplicationConfig config;
     std::string config_error;
     if (load_application_config(loaded_config_path, config, config_error)) {
-        view_model.set_dark_mode(config.dark_mode);
+        view_model.set_dark_mode(true); // the Famicom look is dark only (config.dark_mode is ignored)
         i18n::set_language(i18n::from_code(config.language));
         LOG_INFO("loaded config: {} (dark_mode={})",
                  loaded_config_path,
