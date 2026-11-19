@@ -11,8 +11,11 @@ Reads assets/amiibo/amiibo_db.json, downloads the WebP image of each amiibo from
 repository (https://github.com/8bitDream/AmiiboAPI) and writes <out>/<id>.png, scaled to fit inside the box
 with the aspect ratio kept. Existing files are skipped, so the script can be re-run to resume.
 
-The images are photos of the physical amiibo from the AmiiboAPI image repository. The generated files are
-committed under assets/amiibo/images/; re-run this script to refresh them.
+The images are photos of the physical amiibo from the AmiiboAPI image repository. They are NOT part of the
+ZeroTag repository or package (the artwork belongs to Nintendo): run this script yourself. The application
+looks for them in /usr/share/zerotag/amiibo/images, then in ~/.zerotag/images, so on the device use
+
+    tools/fetch_amiibo_images.py --out ~/.zerotag/images
 """
 
 import argparse

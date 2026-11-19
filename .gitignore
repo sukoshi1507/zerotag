@@ -154,3 +154,5 @@ TODO
 key_retail.bin
 *.bin
 
+# Amiibo thumbnails are downloaded by tools/fetch_amiibo_images.py, never committed (Nintendo artwork)
+assets/amiibo/images/

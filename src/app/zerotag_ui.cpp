@@ -739,10 +739,14 @@ lv_obj_t* ZeroTagUi::thumb(lv_obj_t* parent, const amiibo::Entry* entry, int x, 
     if (!entry) {
         return holder;
     }
-    const std::string path = amiibo::Database::image_path(images_dir_, *entry);
+    // Thumbnails are not shipped (artwork of the amiibo): look in the installed assets, then in the user's folder.
+    std::string path = amiibo::Database::image_path(images_dir_, *entry);
     std::error_code ec;
     if (!fs::exists(path, ec)) {
-        return holder;
+        path = amiibo::Database::image_path(home_dir() + "/.zerotag/images", *entry);
+        if (!fs::exists(path, ec)) {
+            return holder;
+        }
     }
     lv_obj_t* img = lv_image_create(holder);
     lv_image_set_src(img, ("A:" + path).c_str());
