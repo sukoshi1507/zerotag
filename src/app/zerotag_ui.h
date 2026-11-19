@@ -26,7 +26,8 @@ namespace app {
 
 class ZeroTagUi {
 public:
-    ZeroTagUi(AssetManager& assets, bool dark_mode, std::function<void()> request_quit);
+    ZeroTagUi(AssetManager& assets, bool dark_mode, std::function<void()> request_quit,
+              std::function<void(const std::string&)> persist_language = {});
     ~ZeroTagUi();
 
     ZeroTagUi(const ZeroTagUi&) = delete;
@@ -87,6 +88,7 @@ private:
     AssetManager& assets_;
     bool dark_;
     std::function<void()> request_quit_;
+    std::function<void(const std::string&)> persist_language_;
     view::ThemePalette pal_{};
     lv_color_t dim_{};
     lv_obj_t* root_{nullptr};

@@ -8,6 +8,7 @@
 
 #include "application_config.h"
 #include "asset_manager.h"
+#include "i18n.h"
 #include "logger.h"
 #include "linux_input.h"
 #include "screenshot_service.h"
@@ -188,6 +189,7 @@ int Application::run() {
     std::string config_error;
     if (load_application_config(loaded_config_path, config, config_error)) {
         view_model.set_dark_mode(config.dark_mode);
+        i18n::set_language(i18n::from_code(config.language));
         LOG_INFO("loaded config: {} (dark_mode={})",
                  loaded_config_path,
                  config.dark_mode ? "yes" : "no");
@@ -215,7 +217,14 @@ int Application::run() {
     simulator_frame.bind_dark_mode(view_model.dark_mode_subject());
 #endif
 
-    ZeroTagUi ui(assets, view_model.is_dark_mode(), [&view_model]() { view_model.request_quit(); });
+    ZeroTagUi ui(
+        assets, view_model.is_dark_mode(), [&view_model]() { view_model.request_quit(); },
+        [&user_config_path](const std::string& language) {
+            std::string error;
+            if (!save_language(user_config_path, language, error)) {
+                LOG_WARN("failed to save language to {}: {}", user_config_path, error);
+            }
+        });
     ui.start();
     platform::set_global_key_listener(
         [](uint32_t key, const char*, bool long_pressed, void* user_data) {

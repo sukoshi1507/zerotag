@@ -5,6 +5,7 @@
 #include "zerotag_ui.h"
 
 #include "device_status.h"
+#include "i18n.h"
 #include "linux_input.h"
 #include "logger.h"
 #include "screenshot_service.h"
@@ -19,6 +20,8 @@
 #include <unistd.h>
 
 namespace fs = std::filesystem;
+using app::i18n::Str;
+using app::i18n::tr;
 
 namespace app {
 namespace {
@@ -54,8 +57,12 @@ std::string clip(const std::string& s, size_t n) {
 // Construction and data
 // ---------------------------------------------------------------------------
 
-ZeroTagUi::ZeroTagUi(AssetManager& assets, bool dark_mode, std::function<void()> request_quit)
-    : assets_(assets), dark_(dark_mode), request_quit_(std::move(request_quit)) {
+ZeroTagUi::ZeroTagUi(AssetManager& assets, bool dark_mode, std::function<void()> request_quit,
+                     std::function<void(const std::string&)> persist_language)
+    : assets_(assets),
+      dark_(dark_mode),
+      request_quit_(std::move(request_quit)),
+      persist_language_(std::move(persist_language)) {
     pal_ = view::palette(dark_);
     dim_ = lv_color_mix(pal_.text, pal_.background, 150);
 }
@@ -168,12 +175,12 @@ void ZeroTagUi::say(const std::string& value, bool error) {
 
 void ZeroTagUi::create_blank(const amiibo::Entry& entry) {
     if (!keys_ok_) {
-        say("Cles introuvables : voir F1", true);
+        say(tr(Str::KeysMissingF1), true);
         return;
     }
     std::string path, error;
     if (!library_.create(*keys_, entry, path, error)) {
-        say("Echec : " + error, true);
+        say(i18n::format(Str::BannerFailed, error.c_str()), true);
         return;
     }
     rescan_library();
@@ -187,7 +194,7 @@ void ZeroTagUi::create_blank(const amiibo::Entry& entry) {
             lib_top_ = std::max(0, lib_sel_ - kRows + 1);
         }
     }
-    say("Cree : " + base_name(path));
+    say(i18n::format(Str::BannerCreated, base_name(path).c_str()));
     go(Screen::Library);
 }
 
@@ -203,24 +210,25 @@ void ZeroTagUi::delete_item(const amiibo::Item& item) {
     fs::remove(path, ec);
     rescan_library();
     lib_sel_ = std::max(0, std::min(lib_sel_, static_cast<int>(visible_items().size()) - 1));
-    say(ec ? "Suppression impossible" : "Supprime : " + base_name(path), static_cast<bool>(ec));
+    say(ec ? std::string(tr(Str::BannerCantDelete)) : i18n::format(Str::BannerDeleted, base_name(path).c_str()),
+        static_cast<bool>(ec));
     go(Screen::Library);
 }
 
 void ZeroTagUi::reset_item(const amiibo::Item& item) {
     if (!keys_ok_) {
-        say("Cles introuvables : voir F1", true);
+        say(tr(Str::KeysMissingF1), true);
         return;
     }
     amiibo::TagImage image;
     std::string error;
     if (!amiibo::generate(*keys_, item.head, item.tail, image, error) ||
         !amiibo::Library::write_image(item.path, image, error)) {
-        say("Echec : " + error, true);
+        say(i18n::format(Str::BannerFailed, error.c_str()), true);
         return;
     }
     rescan_library();
-    say("Reinitialise avec un nouvel UID");
+    say(tr(Str::BannerResetDone));
     render();
 }
 
@@ -264,9 +272,9 @@ void ZeroTagUi::stop_emulation() {
             std::string error;
             amiibo::TagImage image = result.image;
             if (amiibo::Library::write_image(current_path_, image, error)) {
-                say("Ecritures enregistrees dans " + base_name(current_path_));
+                say(i18n::format(Str::BannerSaved, base_name(current_path_).c_str()));
             } else {
-                say("Enregistrement impossible : " + error, true);
+                say(i18n::format(Str::BannerSaveFailed, error.c_str()), true);
             }
             rescan_library();
         }
@@ -282,9 +290,7 @@ void ZeroTagUi::check_hardware() {
     platform::St25r3916 chip;
     if (chip.open(error)) {
         cap_ok_ = true;
-        char b[96];
-        std::snprintf(b, sizeof(b), "ST25R3916 detecte, revision %d", chip.revision());
-        cap_status_ = b;
+        cap_status_ = i18n::format(Str::SetupCapDetected, chip.revision());
     } else {
         cap_status_ = error;
     }
@@ -305,7 +311,7 @@ void ZeroTagUi::tick() {
             // The worker ended on its own (setup failure or timeout).
             const auto result = session_->finish();
             if (!result.ok) {
-                emu_error_ = result.error.empty() ? "emulation interrompue" : result.error;
+                emu_error_ = result.error.empty() ? std::string(tr(Str::EmuInterrupted)) : result.error;
             }
             session_.reset();
             chip_.reset();
@@ -369,7 +375,9 @@ bool ZeroTagUi::on_key(uint32_t key, bool long_pressed) {
     if (key == platform::kKeyPrintScreen) {
         if (!long_pressed) {
             const auto result = platform::screenshot::capture_active_screen();
-            say(result.success ? "Capture : " + base_name(result.path) : "Capture impossible", !result.success);
+            say(result.success ? i18n::format(Str::BannerCapture, base_name(result.path).c_str())
+                           : std::string(tr(Str::BannerCaptureFailed)),
+            !result.success);
             render();
         }
         return true;
@@ -388,6 +396,16 @@ bool ZeroTagUi::on_key(uint32_t key, bool long_pressed) {
         return true;
     }
     if (long_pressed) {
+        return true;
+    }
+    if (key == platform::kKeyF2 && screen_ != Screen::Emulating) {
+        const auto next = i18n::next_language(i18n::language());
+        i18n::set_language(next);
+        if (persist_language_) {
+            persist_language_(i18n::code(next));
+        }
+        say(i18n::format(Str::BannerLanguage, i18n::native_name(next)));
+        render();
         return true;
     }
 
@@ -477,7 +495,7 @@ bool ZeroTagUi::on_key(uint32_t key, bool long_pressed) {
                 reset_item(*item);
             } else {
                 pending_confirm_ = 1;
-                say("Appuie encore sur R : efface la sauvegarde de jeu");
+                say(tr(Str::BannerConfirmReset));
                 render();
             }
         } else if (key == LV_KEY_DEL) {
@@ -486,7 +504,7 @@ bool ZeroTagUi::on_key(uint32_t key, bool long_pressed) {
                 delete_item(*item);
             } else {
                 pending_confirm_ = 2;
-                say("Appuie encore sur Suppr : supprime le fichier");
+                say(tr(Str::BannerConfirmDelete));
                 render();
             }
         } else {
@@ -703,15 +721,15 @@ void ZeroTagUi::render() {
 
 void ZeroTagUi::render_library() {
     const auto items = visible_items();
-    render_bar("ZeroTag", "Bibliotheque - " + std::to_string(library_.items().size()));
-    search_field(root_, lib_query_, "Taper pour filtrer...", !lib_query_.empty());
+    render_bar("ZeroTag", std::string(tr(Str::LibraryTitle)) + " - " + std::to_string(library_.items().size()));
+    search_field(root_, lib_query_, tr(Str::FilterPlaceholder), !lib_query_.empty());
     box(root_, kListW, kBarH, 1, kScreenH - kBarH - kFootH, pal_.border, 0);
 
     if (items.empty()) {
-        std::string line1 = library_.items().empty() ? "Aucun amiibo dans la bibliotheque." : "Aucun resultat.";
-        std::string line2 = !keys_ok_ ? "Cles introuvables : F1" : "Tab : catalogue, Entree cree un amiibo.";
-        text(root_, line1, font(10), pal_.text, 8, 62, kListW - 16);
-        text(root_, line2, font(9), dim_, 8, 80, kListW - 16);
+        std::string line1 = library_.items().empty() ? tr(Str::LibraryEmpty) : tr(Str::NoResult);
+        std::string line2 = !keys_ok_ ? tr(Str::KeysMissingF1) : tr(Str::LibraryHowTo);
+        text(root_, line1, font(10), pal_.text, 8, 62, kListW - 16, true);
+        text(root_, line2, font(9), dim_, 8, 80, kListW - 16, true);
     }
 
     const int first = std::min(lib_top_, std::max(0, static_cast<int>(items.size()) - 1));
@@ -750,25 +768,29 @@ void ZeroTagUi::render_library() {
             text(root_, item.entry->type, font(9), dim_, tx, 70, tw);
         }
         text(root_, item.uid, font(9), pal_.text, kListW + 8, 104, kScreenW - kListW - 12);
-        const char* sig = !item.signature_checked ? "Signature non verifiee"
-                                                  : (item.signature_ok ? "Signature valide" : "Signature invalide");
+        const char* sig = !item.signature_checked ? tr(Str::SigUnchecked)
+                                                  : (item.signature_ok ? tr(Str::SigValid) : tr(Str::SigInvalid));
         text(root_, sig, font(9), !item.signature_checked ? dim_ : (item.signature_ok ? pal_.primary : pal_.error),
              kListW + 8, 118, kScreenW - kListW - 12);
     }
-    render_footer({{"Haut/Bas", "Choix"}, {"Entree", "Ouvrir"}, {"Tab", "Catalogue"}, {"F1", "Etat"}});
+    render_footer({{tr(Str::KeyUpDown), tr(Str::HintChoose)},
+                   {tr(Str::KeyEnter), tr(Str::HintOpen)},
+                   {tr(Str::KeyTab), tr(Str::HintCatalogue)},
+                   {"F1", tr(Str::HintState)},
+                   {"F2", tr(Str::HintLanguage)}});
 }
 
 void ZeroTagUi::render_catalogue() {
     const auto entries = visible_entries();
-    render_bar("Catalogue", std::to_string(entries.size()) + " / " + std::to_string(db_.entries().size()));
-    search_field(root_, cat_query_, "Rechercher un personnage...", true);
+    render_bar(tr(Str::CatalogueTitle), std::to_string(entries.size()) + " / " + std::to_string(db_.entries().size()));
+    search_field(root_, cat_query_, tr(Str::SearchPlaceholder), true);
     box(root_, kListW, kBarH, 1, kScreenH - kBarH - kFootH, pal_.border, 0);
 
     if (!db_ok_) {
-        text(root_, "Catalogue illisible :", font(10), pal_.error, 8, 62, kListW - 16);
+        text(root_, tr(Str::CatalogueUnreadable), font(10), pal_.error, 8, 62, kListW - 16);
         text(root_, clip(db_error_, 60), font(9), dim_, 8, 78, kListW - 16);
     } else if (entries.empty()) {
-        text(root_, "Aucun resultat.", font(10), pal_.text, 8, 62, kListW - 16);
+        text(root_, tr(Str::NoResult), font(10), pal_.text, 8, 62, kListW - 16);
     }
 
     auto owned = [&](const amiibo::Entry* e) {
@@ -797,7 +819,7 @@ void ZeroTagUi::render_catalogue() {
         text(root_, e->name, font(11, sel), sel ? pal_.primary : pal_.text, 28, y + 2, w);
         text(root_, e->amiibo_series, font(9), dim_, 28, y + 14, kListW - 36);
         if (owned(e)) {
-            text(root_, "possede", font(9), pal_.primary, kListW - 48, y + 4);
+            text(root_, tr(Str::Owned), font(9), pal_.primary, kListW - 48, y + 4);
         }
     }
     if (entries.size() > static_cast<size_t>(kRows)) {
@@ -818,17 +840,21 @@ void ZeroTagUi::render_catalogue() {
         text(root_, e->type, font(9), dim_, tx, 70, tw);
         lv_obj_t* note = box(root_, kListW + 6, 104, kScreenW - kListW - 12, 44, pal_.button, 1, pal_.border, 4);
         if (!keys_ok_) {
-            text(note, "Cles introuvables", font(9, true), pal_.warning, 6, 4, kScreenW - kListW - 24);
-            text(note, "Creation impossible : voir F1.", font(9), dim_, 6, 18, kScreenW - kListW - 24, true);
+            text(note, tr(Str::NoteKeysTitle), font(9, true), pal_.warning, 6, 4, kScreenW - kListW - 24);
+            text(note, tr(Str::NoteKeysBody), font(9), dim_, 6, 18, kScreenW - kListW - 24, true);
         } else if (owned(e)) {
-            text(note, "Deja possede", font(9, true), pal_.primary, 6, 4, kScreenW - kListW - 24);
-            text(note, "Entree en cree un autre exemplaire.", font(9), dim_, 6, 18, kScreenW - kListW - 24, true);
+            text(note, tr(Str::NoteOwnedTitle), font(9, true), pal_.primary, 6, 4, kScreenW - kListW - 24);
+            text(note, tr(Str::NoteOwnedBody), font(9), dim_, 6, 18, kScreenW - kListW - 24, true);
         } else {
-            text(note, "Pas encore possede", font(9, true), pal_.warning, 6, 4, kScreenW - kListW - 24);
-            text(note, "Entree cree une image vierge signee.", font(9), dim_, 6, 18, kScreenW - kListW - 24, true);
+            text(note, tr(Str::NoteNewTitle), font(9, true), pal_.warning, 6, 4, kScreenW - kListW - 24);
+            text(note, tr(Str::NoteNewBody), font(9), dim_, 6, 18, kScreenW - kListW - 24, true);
         }
     }
-    render_footer({{"Haut/Bas", "Choix"}, {"Entree", "Creer"}, {"Tab", "Biblio."}, {"Echap", "Retour"}});
+    render_footer({{tr(Str::KeyUpDown), tr(Str::HintChoose)},
+                   {tr(Str::KeyEnter), tr(Str::HintCreate)},
+                   {tr(Str::KeyTab), tr(Str::HintLibrary)},
+                   {tr(Str::KeyEsc), tr(Str::HintBack)},
+                   {"F2", tr(Str::HintLanguage)}});
 }
 
 void ZeroTagUi::render_detail() {
@@ -839,8 +865,8 @@ void ZeroTagUi::render_detail() {
         }
     }
     if (!item) {
-        render_bar("ZeroTag", "Introuvable");
-        render_footer({{"Echap", "Retour"}});
+        render_bar("ZeroTag", tr(Str::NotFound));
+        render_footer({{tr(Str::KeyEsc), tr(Str::HintBack)}});
         return;
     }
     render_bar(item_name(*item), item->entry ? item->entry->amiibo_series : "");
@@ -851,11 +877,11 @@ void ZeroTagUi::render_detail() {
     const int x = 104;
     const int w = kScreenW - x - 8;
     text(root_, item_name(*item), font(14, true), pal_.text, x, 24, w);
-    std::string sub = item->entry ? item->entry->game_series + " - " + item->entry->type : "Personnage hors catalogue";
+    std::string sub = item->entry ? item->entry->game_series + " - " + item->entry->type : std::string(tr(Str::UnknownCharacter));
     text(root_, sub, font(9), dim_, x, 44, w);
 
-    const char* sig = !item->signature_checked ? "Signature non verifiee"
-                                               : (item->signature_ok ? "Signature valide" : "Signature invalide");
+    const char* sig = !item->signature_checked ? tr(Str::SigUnchecked)
+                                               : (item->signature_ok ? tr(Str::SigValid) : tr(Str::SigInvalid));
     const lv_color_t sig_color = !item->signature_checked ? dim_ : (item->signature_ok ? pal_.primary : pal_.error);
     lv_obj_t* chip1 = box(root_, x, 60, 112, 14, pal_.button, 1, sig_color, 7);
     lv_obj_t* c1 = text(chip1, sig, font(9), sig_color, 0, 0);
@@ -878,17 +904,20 @@ void ZeroTagUi::render_detail() {
     }
 
     lv_obj_t* emu = box(root_, x, 126, 104, 20, pal_.primary, 0, pal_.primary, 4);
-    lv_obj_t* el = text(emu, "Entree  Emuler", font(10, true), pal_.background, 0, 0);
+    lv_obj_t* el = text(emu, tr(Str::ButtonEmulate), font(10, true), pal_.background, 0, 0);
     lv_obj_align(el, LV_ALIGN_CENTER, 0, 0);
     lv_obj_t* reset = box(root_, x + 108, 126, 54, 20, pal_.button, 1,
                           pending_confirm_ == 1 ? pal_.warning : pal_.border, 4);
-    lv_obj_t* rl = text(reset, pending_confirm_ == 1 ? "R ?" : "R Neuf", font(10), pal_.text, 0, 0);
+    lv_obj_t* rl = text(reset, pending_confirm_ == 1 ? tr(Str::ButtonResetAsk) : tr(Str::ButtonReset), font(10), pal_.text, 0, 0);
     lv_obj_align(rl, LV_ALIGN_CENTER, 0, 0);
     lv_obj_t* del = box(root_, x + 166, 126, 38, 20, pal_.button, 1, pending_confirm_ == 2 ? pal_.error : pal_.border, 4);
-    lv_obj_t* dl = text(del, pending_confirm_ == 2 ? "Supp ?" : "Supp", font(10), pal_.error, 0, 0);
+    lv_obj_t* dl = text(del, pending_confirm_ == 2 ? tr(Str::ButtonDeleteAsk) : tr(Str::ButtonDelete), font(10), pal_.error, 0, 0);
     lv_obj_align(dl, LV_ALIGN_CENTER, 0, 0);
 
-    render_footer({{"Entree", "Emuler"}, {"R", "Nouvel UID"}, {"Suppr", "Supprimer"}, {"Echap", "Retour"}});
+    render_footer({{tr(Str::KeyEnter), tr(Str::HintEmulate)},
+                   {"R", tr(Str::HintNewUid)},
+                   {tr(Str::KeyDel), tr(Str::HintDelete)},
+                   {tr(Str::KeyEsc), tr(Str::HintBack)}});
 }
 
 void ZeroTagUi::render_emulating() {
@@ -903,7 +932,7 @@ void ZeroTagUi::render_emulating() {
     const bool selected = running && session_->stats().selected.load();
     const lv_color_t accent = !emu_error_.empty() ? pal_.error : (selected ? pal_.primary : pal_.info);
 
-    render_bar("Emulation", item ? item_name(*item) : "");
+    render_bar(tr(Str::EmulationTitle), item ? item_name(*item) : "");
 
     // rings and thumbnail
     const int cx = 66, cy = 86;
@@ -917,42 +946,39 @@ void ZeroTagUi::render_emulating() {
     const int x = 132;
     const int w = kScreenW - x - 8;
     if (!emu_error_.empty()) {
-        text(root_, "Emulation impossible", font(13, true), pal_.error, x, 30, w);
+        text(root_, tr(Str::EmuFailed), font(13, true), pal_.error, x, 30, w);
         text(root_, clip(emu_error_, 90), font(9), pal_.text, x, 50, w, true);
         const bool perms = emu_error_.find("Permission") != std::string::npos ||
                            emu_error_.find("denied") != std::string::npos || emu_error_.find("open") != std::string::npos ||
                            emu_error_.find("GPIO") != std::string::npos;
         const bool overlay = emu_error_.find("spidev") != std::string::npos ||
                              emu_error_.find("No such file") != std::string::npos;
-        text(root_, overlay ? "Port SPI absent : redemarre l'appareil (service zerotag-spi)."
-                            : (perms ? "Droits insuffisants sur le Cap (groupes spi et gpio)."
-                                     : "Verifie le Cap et relance (F1 : etat)."),
-             font(9), dim_, x, 88, w, true);
+        text(root_, overlay ? tr(Str::ErrSpi) : (perms ? tr(Str::ErrPerms) : tr(Str::ErrGeneric)), font(9), dim_, x, 88,
+             w, true);
     } else {
-        text(root_, selected ? "Lecteur connecte" : (field ? "Lecteur detecte..." : "En attente d'un lecteur..."),
-             font(13, true), accent, x, 28, w);
-        text(root_, selected ? "Garde le Cap en place jusqu'a la fin du chargement."
-                             : "Pose le Cap contre la zone NFC de la console quand le jeu demande de scanner.",
+        text(root_, selected ? tr(Str::EmuConnected) : (field ? tr(Str::EmuDetected) : tr(Str::EmuWaiting)),
+             font(13, true), accent, x, 28, w, true);
+        text(root_, selected ? tr(Str::EmuConnHelp) : tr(Str::EmuWaitHelp),
              font(9), dim_, x, 48, w, true);
         const uint32_t reads = running ? session_->stats().reads.load() : 0;
         const uint32_t writes = running ? session_->stats().writes.load() : 0;
         const uint32_t secs = lv_tick_elaps(emu_started_) / 1000u;
         char b[48];
-        text(root_, "Lectures", font(9), dim_, x, 92);
+        text(root_, tr(Str::EmuReads), font(9), dim_, x, 92, 56);
         std::snprintf(b, sizeof(b), "%u", reads);
         text(root_, b, font(9), pal_.text, x + 58, 92);
-        text(root_, "Ecritures", font(9), dim_, x, 105);
-        std::snprintf(b, sizeof(b), writes ? "%u - a enregistrer" : "%u", writes);
-        text(root_, b, font(9), writes ? pal_.warning : pal_.text, x + 58, 105, w - 58);
-        text(root_, "Duree", font(9), dim_, x, 118);
+        text(root_, tr(Str::EmuWrites), font(9), dim_, x, 105, 56);
+        const std::string writes_text = writes ? i18n::format(Str::EmuWritesPending, writes) : std::to_string(writes);
+        text(root_, writes_text, font(9), writes ? pal_.warning : pal_.text, x + 58, 105, w - 58);
+        text(root_, tr(Str::EmuDuration), font(9), dim_, x, 118, 56);
         std::snprintf(b, sizeof(b), "%02u:%02u", secs / 60, secs % 60);
         text(root_, b, font(9), pal_.text, x + 58, 118);
     }
     if (banner_.empty()) {
-        text(root_, "Les ecritures du jeu sont enregistrees a l'arret.", font(9), dim_, 6, kScreenH - kFootH + 4, 230);
+        text(root_, tr(Str::EmuFooterNote), font(9), dim_, 6, kScreenH - kFootH + 4, 228);
         box(root_, 0, kScreenH - kFootH, kScreenW, 1, pal_.border, 0);
         lv_obj_t* cap = box(root_, kScreenW - 62, kScreenH - kFootH + 4, 56, 13, pal_.surface, 1, pal_.border, 3);
-        lv_obj_t* l = text(cap, "Echap Stop", font(9), pal_.text, 0, 0);
+        lv_obj_t* l = text(cap, tr(Str::EmuStopButton), font(9), pal_.text, 0, 0);
         lv_obj_align(l, LV_ALIGN_CENTER, 0, 0);
     } else {
         render_footer({});
@@ -960,24 +986,21 @@ void ZeroTagUi::render_emulating() {
 }
 
 void ZeroTagUi::render_setup() {
-    render_bar("ZeroTag", "Etat du systeme");
+    render_bar("ZeroTag", tr(Str::SetupTitle));
     struct Row {
         lv_color_t color;
         std::string title;
         std::string detail;
     };
     std::vector<Row> rows;
-    rows.push_back({cap_ok_ ? pal_.primary : pal_.error, "Cap CC1101 - NFC",
-                    cap_status_.empty() ? "Non verifie (R)" : clip(cap_status_, 90)});
-    char b[128];
-    std::snprintf(b, sizeof(b), "%s - %zu sauvegardes - %zu personnages au catalogue", library_dir_.c_str(),
-                  library_.items().size(), db_.entries().size());
-    rows.push_back({library_ok_ && db_ok_ ? pal_.primary : pal_.warning, "Dossier des amiibo",
-                    library_ok_ ? b : "Dossier absent : " + library_dir_ + " (cree au premier amiibo)"});
-    rows.push_back({keys_ok_ ? pal_.primary : pal_.warning, keys_ok_ ? "Cles trouvees" : "Cles introuvables",
-                    keys_ok_ ? keys_path_
-                             : "Copie key_retail.bin dans " + keys_path_ +
-                                   ". Sans elle : emulation oui, creation et signatures non."});
+    rows.push_back({cap_ok_ ? pal_.primary : pal_.error, tr(Str::SetupCap),
+                    cap_status_.empty() ? std::string(tr(Str::SetupNotChecked)) : clip(cap_status_, 90)});
+    rows.push_back({library_ok_ && db_ok_ ? pal_.primary : pal_.warning, tr(Str::SetupFolder),
+                    library_ok_ ? i18n::format(Str::SetupFolderInfo, library_dir_.c_str(), library_.items().size(),
+                                               db_.entries().size())
+                                : i18n::format(Str::SetupFolderAbsent, library_dir_.c_str())});
+    rows.push_back({keys_ok_ ? pal_.primary : pal_.warning, keys_ok_ ? tr(Str::SetupKeysOk) : tr(Str::NoteKeysTitle),
+                    keys_ok_ ? keys_path_ : i18n::format(Str::SetupKeysHelp, keys_path_.c_str())});
     int y = 24;
     for (const auto& r : rows) {
         box(root_, 8, y + 3, 8, 8, r.color, 0, r.color, 4);
@@ -986,7 +1009,7 @@ void ZeroTagUi::render_setup() {
         y += 40;
         box(root_, 0, y - 6, kScreenW, 1, pal_.surface, 0);
     }
-    render_footer({{"R", "Reverifier"}, {"Echap", "Retour"}});
+    render_footer({{"R", tr(Str::HintRecheck)}, {tr(Str::KeyEsc), tr(Str::HintBack)}, {"F2", tr(Str::HintLanguage)}});
 }
 
 } // namespace app

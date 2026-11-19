@@ -12,11 +12,13 @@ namespace app {
 
 struct ApplicationConfig {
     bool dark_mode = true;
+    std::string language = "fr"; // fr, en, ja
 };
 
 bool load_application_config(const std::string& path,
                              ApplicationConfig& config,
                              std::string& error);
+bool save_language(const std::string& path, const std::string& language, std::string& error);
 bool save_application_config(const std::string& path,
                              const ApplicationConfig& config,
                              std::string& error);

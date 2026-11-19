@@ -90,6 +90,9 @@ bool load_application_config(const std::string& path,
         }
 
         const auto key = lowercase(trim(line.substr(0, separator)));
+        if (section == "application" && key == "language") {
+            config.language = lowercase(trim(line.substr(separator + 1)));
+        }
         if (section == "application" && key == "dark_mode") {
             if (!parse_bool(line.substr(separator + 1), config.dark_mode)) {
                 error = "invalid dark_mode value at line " + std::to_string(line_number);
@@ -176,6 +179,83 @@ bool save_application_config(const std::string& path,
         return false;
     }
 
+    return true;
+}
+
+bool save_language(const std::string& path, const std::string& language, std::string& error) {
+    error.clear();
+    const std::filesystem::path config_path(path);
+    if (!config_path.parent_path().empty()) {
+        std::error_code ec;
+        std::filesystem::create_directories(config_path.parent_path(), ec);
+        if (ec) {
+            error = "could not create parent directory: " + ec.message();
+            return false;
+        }
+    }
+
+    std::vector<std::string> lines;
+    {
+        std::ifstream input(path);
+        std::string line;
+        while (std::getline(input, line)) {
+            lines.push_back(line);
+        }
+    }
+
+    // Find the [application] section and its end.
+    std::size_t begin = std::string::npos;
+    std::size_t end = lines.size();
+    for (std::size_t i = 0; i < lines.size(); ++i) {
+        if (begin == std::string::npos) {
+            if (is_section(lines[i], "application")) {
+                begin = i + 1;
+            }
+        } else {
+            const auto n = trim(lines[i]);
+            if (n.size() >= 2 && n.front() == '[' && n.back() == ']') {
+                end = i;
+                break;
+            }
+        }
+    }
+    const std::string entry = "language=" + language;
+    if (begin == std::string::npos) {
+        if (!lines.empty() && !lines.back().empty()) {
+            lines.emplace_back();
+        }
+        lines.emplace_back("[application]");
+        lines.push_back(entry);
+    } else {
+        bool replaced = false;
+        for (std::size_t i = begin; i < end; ++i) {
+            if (is_key(lines[i], "language")) {
+                lines[i] = entry;
+                replaced = true;
+                break;
+            }
+        }
+        if (!replaced) {
+            std::size_t pos = end;
+            while (pos > begin && trim(lines[pos - 1]).empty()) {
+                --pos;
+            }
+            lines.insert(lines.begin() + static_cast<std::ptrdiff_t>(pos), entry);
+        }
+    }
+
+    std::ofstream output(path, std::ios::trunc);
+    if (!output) {
+        error = "could not open file for writing";
+        return false;
+    }
+    for (const auto& l : lines) {
+        output << l << '\n';
+    }
+    if (!output) {
+        error = "failed while writing file";
+        return false;
+    }
     return true;
 }
 
