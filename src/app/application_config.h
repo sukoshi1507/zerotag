@@ -14,6 +14,7 @@ struct ApplicationConfig {
     bool dark_mode = true;
     std::string language = "fr"; // fr, en, ja
     bool uid_rotation = false;   // new UID after each read session
+    bool sound = true;           // jingles and the manual's music
 };
 
 bool load_application_config(const std::string& path,

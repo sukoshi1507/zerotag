@@ -24,6 +24,7 @@
 #include <string>
 #include <thread>
 #include <utility>
+#include <vector>
 
 namespace app {
 
@@ -51,13 +52,14 @@ public:
 
     void start();
     void set_uid_rotation(bool enabled) { uid_rotation_ = enabled; }
+    void set_sound(bool enabled);
 
     // Called by the platform key router. Returns true when the key was used.
     bool on_key(uint32_t key, bool long_pressed);
     void on_key_release(uint32_t key);
 
 private:
-    enum class Screen { Library, Catalogue, Facets, Detail, Emulating, Settings, Help, CapSetup, Scan };
+    enum class Screen { Library, Catalogue, Facets, Detail, Emulating, Settings, Help, CapSetup, Scan, Manual };
     // Library tabs (F3 cycles): all backups (favourites first), favourites only, recently emulated.
     enum class LibTab { All = 0, Favorites = 1, Recent = 2, Count = 3 };
 
@@ -92,6 +94,7 @@ private:
     void check_hardware();
     void cycle_language(int direction);
     void toggle_rotation();
+    void toggle_sound();
     void open_cap_setup(Screen after);
     void submit_cap_setup();
 
@@ -119,6 +122,7 @@ private:
     void render_help();
     void render_cap_setup();
     void render_scan();
+    void render_manual();
 
     lv_obj_t* box(lv_obj_t* parent, int x, int y, int w, int h, lv_color_t fill, int border_w = 0,
                   lv_color_t border = lv_color_black(), int radius = 0);
@@ -148,6 +152,24 @@ private:
     lv_color_t dim_{};
     lv_obj_t* root_{nullptr};
     lv_timer_t* timer_{nullptr};
+    bool sound_{true};
+
+    // ---- manual (demoscene screen): the animated objects are rebuilt with the page, moved by anim_timer_
+    void manual_enter();
+    void manual_leave();
+    void manual_animate();
+    static void anim_cb(lv_timer_t* timer);
+    struct ManualStar { lv_obj_t* obj; int x0; int y; int speed; };
+    struct ManualBar { lv_obj_t* obj[3]; double phase; };
+    lv_timer_t* anim_timer_{nullptr};
+    uint32_t anim_t0_{0};
+    int manual_page_{0};
+    std::vector<ManualStar> manual_stars_;
+    std::vector<ManualBar> manual_bars_;
+    std::vector<lv_obj_t*> manual_chars_;
+    std::vector<int> manual_char_color_;
+    std::vector<std::string> manual_scroll_;
+    int manual_scroll_first_{-1};
     std::map<int, const lv_font_t*> fonts_;
 
     // paths
@@ -220,6 +242,7 @@ private:
     std::thread scan_thread_;
     std::mutex scan_mutex_;
     std::atomic<bool> scan_stop_{false};
+    bool scan_error_sounded_{false};
     std::atomic<ScanPhase> scan_phase_{ScanPhase::Opening};
     std::atomic<ScanIssue> scan_issue_{ScanIssue::None};
     std::atomic<int> scan_issue_page_{0};

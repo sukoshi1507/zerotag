@@ -16,11 +16,13 @@
 #include "theme.h"
 #include "zerotag_ui.h"
 
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <memory>
 #include <string>
+#include <thread>
 
 #if USE_DESKTOP
 #include "desktop_simulator_frame.h"
@@ -186,12 +188,14 @@ int Application::run() {
     }
 
     bool uid_rotation_enabled = false;
+    bool sound_enabled = true;
     ApplicationConfig config;
     std::string config_error;
     if (load_application_config(loaded_config_path, config, config_error)) {
         view_model.set_dark_mode(true); // the Famicom look is dark only (config.dark_mode is ignored)
         i18n::set_language(i18n::from_code(config.language));
         uid_rotation_enabled = config.uid_rotation;
+        sound_enabled = config.sound;
         LOG_INFO("loaded config: {} (dark_mode={})",
                  loaded_config_path,
                  config.dark_mode ? "yes" : "no");
@@ -228,6 +232,7 @@ int Application::run() {
             }
         });
     ui.set_uid_rotation(uid_rotation_enabled);
+    ui.set_sound(sound_enabled);
     ui.start();
     platform::set_global_key_listener(
         [](uint32_t key, const char*, bool long_pressed, void* user_data) {
@@ -258,7 +263,8 @@ int Application::run() {
 #endif
     ) {
         lv_timer_handler();
-        lv_delay_ms(5);
+        // A real sleep: lv_delay_ms() busy-waits here and kept one core at 100 %.
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 
     platform::set_global_key_listener(nullptr, nullptr);

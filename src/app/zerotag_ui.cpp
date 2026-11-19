@@ -4,6 +4,7 @@
 
 #include "zerotag_ui.h"
 
+#include "audio.h"
 #include "cap_setup.h"
 #include "device_status.h"
 #include "i18n.h"
@@ -14,6 +15,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -185,6 +187,7 @@ ZeroTagUi::ZeroTagUi(AssetManager& assets, bool dark_mode, std::function<void()>
 
 ZeroTagUi::~ZeroTagUi() {
     stop_scan();
+    manual_leave();
     if (timer_) {
         lv_timer_delete(timer_);
     }
@@ -326,6 +329,9 @@ void ZeroTagUi::toggle_favorite(const amiibo::Item& item) {
         say(i18n::format(Str::BannerFailed, error.c_str()), true);
         return;
     }
+    if (now_favorite) {
+        platform::audio::play(platform::Sound::Blip);
+    }
     say(i18n::format(now_favorite ? Str::BannerFavAdded : Str::BannerFavRemoved, name.c_str()));
 }
 
@@ -367,6 +373,11 @@ void ZeroTagUi::go(Screen screen) {
     pending_confirm_ = 0;
     if (screen == Screen::Scan) {
         start_scan_if_idle();
+    }
+    if (screen == Screen::Manual) {
+        manual_enter();
+    } else {
+        manual_leave();
     }
     render();
 }
@@ -486,6 +497,10 @@ void ZeroTagUi::start_emulation(const amiibo::Item& item) {
         chip_.reset();
     } else {
         record_recent(item.path);
+        platform::audio::play(platform::Sound::Start);
+    }
+    if (!emu_error_.empty()) {
+        platform::audio::play(platform::Sound::Error);
     }
     render();
 }
@@ -562,6 +577,20 @@ void ZeroTagUi::submit_cap_setup() {
     render();
 }
 
+void ZeroTagUi::set_sound(bool enabled) {
+    sound_ = enabled;
+    platform::audio::set_enabled(enabled);
+}
+
+void ZeroTagUi::toggle_sound() {
+    set_sound(!sound_);
+    if (persist_setting_) {
+        persist_setting_("sound", sound_ ? "yes" : "no");
+    }
+    platform::audio::play(platform::Sound::Blip); // silent when it was just switched off
+    render();
+}
+
 void ZeroTagUi::toggle_rotation() {
     if (!uid_rotation_ && !keys_ok_) {
         say(tr(Str::KeysMissingF1), true); // the rotation re-signs the image: it needs the keys
@@ -608,6 +637,10 @@ void ZeroTagUi::tick() {
         // Scan: the worker runs on its own thread; the UI joins it and saves the backup when it is done.
         if (scan_phase_.load() == ScanPhase::Done) {
             finish_scan();
+        }
+        if (scan_phase_.load() == ScanPhase::Failed && !scan_error_sounded_) {
+            scan_error_sounded_ = true;
+            platform::audio::play(platform::Sound::Error);
         }
         dirty = true;
     }
@@ -671,6 +704,7 @@ void ZeroTagUi::start_scan_if_idle() {
 
 void ZeroTagUi::start_scan() {
     scan_stop_ = false;
+    scan_error_sounded_ = false;
     scan_phase_ = ScanPhase::Opening;
     scan_issue_ = ScanIssue::None;
     scan_issue_page_ = 0;
@@ -757,6 +791,7 @@ void ZeroTagUi::finish_scan() {
             scan_error_ = error;
         }
         scan_phase_ = ScanPhase::Failed;
+        platform::audio::play(platform::Sound::Error);
         say(i18n::format(Str::BannerSaveFailed, error.c_str()), true);
         return;
     }
@@ -775,6 +810,7 @@ void ZeroTagUi::finish_scan() {
     scan_path_ = path;
     scan_uid_ = scan_uid_text(image);
     scan_phase_ = ScanPhase::Saved;
+    platform::audio::play(platform::Sound::Success); // tu-du-tuuu
     say(i18n::format(Str::BannerScanned, base_name(path).c_str()));
 }
 
@@ -1064,12 +1100,15 @@ bool ZeroTagUi::on_key(uint32_t key, bool long_pressed) {
         if (key == LV_KEY_UP) {
             settings_sel_ = std::max(0, settings_sel_ - 1);
         } else if (key == LV_KEY_DOWN) {
-            settings_sel_ = std::min(5, settings_sel_ + 1);
+            settings_sel_ = std::min(7, settings_sel_ + 1);
         } else if (settings_sel_ == 0 && key == LV_KEY_LEFT) {
             cycle_language(-1);
             return true;
         } else if (settings_sel_ == 1 && key == LV_KEY_LEFT) {
             toggle_rotation();
+            return true;
+        } else if (settings_sel_ == 2 && key == LV_KEY_LEFT) {
+            toggle_sound();
             return true;
         } else if (key == LV_KEY_RIGHT || key == LV_KEY_ENTER) {
             switch (settings_sel_) {
@@ -1080,22 +1119,29 @@ bool ZeroTagUi::on_key(uint32_t key, bool long_pressed) {
                 toggle_rotation();
                 return true;
             case 2:
+                toggle_sound();
+                return true;
+            case 3:
                 if (!platform::spi_available()) {
                     open_cap_setup(Screen::Settings);
                     return true;
                 }
                 check_hardware();
                 break;
-            case 3:
+            case 4:
                 keys_ok_ = keys_->load(keys_path_, keys_error_);
                 rescan_library();
                 break;
-            case 4:
+            case 5:
                 rescan_library();
                 break;
-            default:
+            case 6:
                 screen_before_help_ = Screen::Settings;
                 go(Screen::Help);
+                return true;
+            default:
+                manual_page_ = 0;
+                go(Screen::Manual);
                 return true;
             }
         } else {
@@ -1108,6 +1154,13 @@ bool ZeroTagUi::on_key(uint32_t key, bool long_pressed) {
             settings_top_ = settings_sel_ - 3;
         }
         render();
+        return true;
+    case Screen::Manual:
+        if (key == LV_KEY_LEFT || key == LV_KEY_RIGHT) {
+            manual_page_ = (manual_page_ + (key == LV_KEY_RIGHT ? 1 : 4)) % 5;
+            platform::audio::play(platform::Sound::Blip);
+            render();
+        }
         return true;
     case Screen::Help:
     case Screen::CapSetup:
@@ -1164,6 +1217,9 @@ void ZeroTagUi::on_key_release(uint32_t key) {
         break;
     case Screen::Help:
         go(screen_before_help_);
+        break;
+    case Screen::Manual:
+        go(Screen::Settings);
         break;
     case Screen::Scan:
         stop_scan();
@@ -1414,6 +1470,10 @@ void ZeroTagUi::render() {
     if (!root_) {
         return;
     }
+    manual_stars_.clear(); // the objects below are deleted with the screen
+    manual_bars_.clear();
+    manual_chars_.clear();
+    manual_scroll_first_ = -1;
     lv_obj_clean(root_);
     switch (screen_) {
     case Screen::Library:
@@ -1442,6 +1502,9 @@ void ZeroTagUi::render() {
         break;
     case Screen::Scan:
         render_scan();
+        break;
+    case Screen::Manual:
+        render_manual();
         break;
     }
     draw_frame();
@@ -1809,6 +1872,7 @@ void ZeroTagUi::render_settings() {
     rows.push_back({tr(Str::SettingsLanguage), "", std::string("< ") + i18n::native_name(i18n::language()) + " >", -1});
     rows.push_back({tr(Str::SettingsRotation), tr(Str::HelpRotation),
                     std::string("< ") + tr(uid_rotation_ ? Str::ValueOn : Str::ValueOff) + " >", -1});
+    rows.push_back({tr(Str::SettingsSound), "", std::string("< ") + tr(sound_ ? Str::ValueOn : Str::ValueOff) + " >", -1});
     rows.push_back({tr(Str::SetupCap), cap_status_.empty() ? std::string(tr(Str::SetupNotChecked)) : clip(cap_status_, 70),
                     "", cap_ok_ ? 0 : 2});
     rows.push_back({keys_ok_ ? tr(Str::SetupKeysOk) : tr(Str::NoteKeysTitle),
@@ -1820,6 +1884,7 @@ void ZeroTagUi::render_settings() {
                                 : i18n::format(Str::SetupFolderAbsent, short_path(library_dir_).c_str()),
                     "", library_ok_ && db_ok_ ? 0 : 1});
     rows.push_back({tr(Str::HelpTitle), tr(Str::HelpMenuHint), "", -1});
+    rows.push_back({tr(Str::SettingsManual), tr(Str::ManualMenuHint), "", -1});
 
     const int rh = 30;
     for (int slot = 0; slot < 4; ++slot) {
@@ -1905,6 +1970,173 @@ void ZeroTagUi::render_help() {
         y += 17;
     }
     render_footer({{tr(Str::KeyEsc), tr(Str::HintBack)}});
+}
+
+// ---------------------------------------------------------------------------
+// Manual: key reference pages over a demoscene backdrop (raster bars, starfield, sine scroller, chiptune)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+std::vector<std::string> utf8_chars(const std::string& text) {
+    std::vector<std::string> out;
+    for (size_t i = 0; i < text.size();) {
+        const unsigned char c = static_cast<unsigned char>(text[i]);
+        const size_t len = c < 0x80 ? 1 : (c >> 5) == 0x6 ? 2 : (c >> 4) == 0xE ? 3 : (c >> 3) == 0x1E ? 4 : 1;
+        out.push_back(text.substr(i, len));
+        i += len;
+    }
+    return out;
+}
+
+constexpr int kManualPages = 5;
+constexpr int kScrollerTop = 130;
+constexpr int kScrollSlots = 36;
+constexpr int kScrollAdvance = 9;
+
+} // namespace
+
+void ZeroTagUi::anim_cb(lv_timer_t* timer) {
+    static_cast<ZeroTagUi*>(lv_timer_get_user_data(timer))->manual_animate();
+}
+
+void ZeroTagUi::manual_enter() {
+    anim_t0_ = lv_tick_get();
+    if (!anim_timer_) {
+        anim_timer_ = lv_timer_create(anim_cb, 50, this);
+    }
+    platform::audio::start_music(); // no-op when sound is off
+}
+
+void ZeroTagUi::manual_leave() {
+    if (anim_timer_) {
+        lv_timer_delete(anim_timer_);
+        anim_timer_ = nullptr;
+        platform::audio::stop_music();
+    }
+}
+
+void ZeroTagUi::render_manual() {
+    static const Str titles[kManualPages] = {Str::ManLibrary, Str::ManCatalogue, Str::ManEmulation, Str::ManScan,
+                                             Str::ManCredits};
+    render_bar("ZEROTAG", std::string(tr(titles[manual_page_])) + "  " + std::to_string(manual_page_ + 1) + "/" +
+                              std::to_string(kManualPages));
+
+    // Copper bars under the title bar: a dark / bright / dark stack that slides up and down.
+    struct Palette { uint32_t edge, mid; };
+    static const Palette bar_colors[3] = {{0x6b2a30, 0xe8503f}, {0x7a5a10, 0xf3c93a}, {0x6e675a, 0xf1ebd8}};
+    for (int i = 0; i < 3; ++i) {
+        ManualBar bar{};
+        bar.phase = i * 2.1;
+        bar.obj[0] = box(root_, kInset + 1, 0, kInnerW - 2, 1, lv_color_hex(bar_colors[i].edge), 0);
+        bar.obj[1] = box(root_, kInset + 1, 0, kInnerW - 2, 2, lv_color_hex(bar_colors[i].mid), 0);
+        bar.obj[2] = box(root_, kInset + 1, 0, kInnerW - 2, 1, lv_color_hex(bar_colors[i].edge), 0);
+        manual_bars_.push_back(bar);
+    }
+
+    // Page content.
+    using Line = std::pair<std::string, std::string>;
+    std::vector<Line> lines;
+    std::vector<std::string> paragraphs;
+    switch (manual_page_) {
+    case 0:
+        lines = {{tr(Str::KeyUpDown), tr(Str::HelpChoose)}, {tr(Str::KeyEnter), tr(Str::HelpOpen)},
+                 {"a-z", tr(Str::HelpTypeFilter)}, {tr(Str::KeyTab), tr(Str::HelpToCatalogue)},
+                 {"F2 F3", tr(Str::HelpFavTabs)}, {"F4", tr(Str::HelpScan)}, {"F1", tr(Str::HelpSettings)}};
+        break;
+    case 1:
+        lines = {{tr(Str::KeyUpDown), tr(Str::HelpChoose)}, {"a-z", tr(Str::HelpTypeSearch)},
+                 {tr(Str::KeyEnter), tr(Str::HelpCreate)}, {"F2", tr(Str::HelpFilter)},
+                 {tr(Str::KeyTab), tr(Str::HelpToLibrary)}, {tr(Str::KeyEsc), tr(Str::HelpClearBack)}};
+        break;
+    case 2:
+        lines = {{tr(Str::KeyEnter), tr(Str::HelpEmulate)}, {"R", tr(Str::HelpNewUid)}, {"U", tr(Str::HelpRotation)},
+                 {"F2", tr(Str::HintFavorite)}, {tr(Str::KeyDel), tr(Str::HelpDelete)},
+                 {tr(Str::KeyEsc), tr(Str::HelpStopSave)}, {"", tr(Str::HelpAutosave)}};
+        break;
+    case 3:
+        paragraphs = {tr(Str::ManScanText1), tr(Str::ManScanText2), tr(Str::ManScanText3)};
+        break;
+    default:
+        paragraphs = {tr(Str::ManCredits1), tr(Str::ManCredits2), tr(Str::ManCredits3)};
+        break;
+    }
+    int y = 36;
+    for (const auto& line : lines) {
+        if (!line.first.empty()) {
+            lv_obj_t* probe = text(root_, line.first, font(9), pal_.text, 0, 0);
+            lv_obj_update_layout(probe);
+            const int kw = lv_obj_get_width(probe) + 8;
+            lv_obj_delete(probe);
+            lv_obj_t* cap = box(root_, 12, y, kw, 12, pal_.surface, 2, pal_.cream, 0);
+            lv_obj_t* kl = text(cap, line.first, font(9), pal_.text, 0, 0);
+            lv_obj_align(kl, LV_ALIGN_CENTER, 0, 0);
+        }
+        text(root_, line.second, font(9), line.first.empty() ? dim_ : pal_.text, 78, y, kScreenW - 78 - 12);
+        y += 13;
+    }
+    int py = 40;
+    for (size_t i = 0; i < paragraphs.size(); ++i) {
+        text(root_, paragraphs[i], font(10, i == 0), i == 0 ? pal_.primary : pal_.text, 12, py, kScreenW - 24, true);
+        py += 28;
+    }
+
+    // Sine scroller band.
+    box(root_, kInset, kScrollerTop, kInnerW, kFootTop - kScrollerTop, pal_.bar, 0);
+    box(root_, kInset, kScrollerTop, kInnerW, 1, pal_.accent, 0);
+    // Starfield inside the scroller band only: a small dirty area keeps the animation cheap.
+    static const lv_color_t star_colors[3] = {lv_color_hex(0x5a4a4a), lv_color_hex(0x8a7466), lv_color_hex(0xf1ebd8)};
+    for (int i = 0; i < 14; ++i) {
+        const int speed = 1 + i % 3;
+        lv_obj_t* star = box(root_, 0, 0, speed == 3 ? 2 : 1, speed == 3 ? 2 : 1, star_colors[speed - 1], 0);
+        manual_stars_.push_back({star, (i * 97) % 304, kScrollerTop + 3 + (i * 5) % 13, speed});
+    }
+    manual_scroll_ = utf8_chars(tr(Str::ManualScroller));
+    manual_char_color_.assign(kScrollSlots, -1);
+    for (int i = 0; i < kScrollSlots; ++i) {
+        manual_chars_.push_back(text(root_, " ", font(11, true), pal_.text, 0, kScrollerTop + 3));
+    }
+    render_footer({{"< >", tr(Str::ManualPage)}, {tr(Str::KeyEsc), tr(Str::HintBack)}});
+    manual_animate();
+}
+
+void ZeroTagUi::manual_animate() {
+    if (screen_ != Screen::Manual || manual_chars_.empty()) {
+        return;
+    }
+    const double s = lv_tick_elaps(anim_t0_) / 1000.0;
+
+    for (const auto& star : manual_stars_) {
+        const int span = 304;
+        const int x = (((star.x0 - static_cast<int>(s * star.speed * 14.0)) % span) + span) % span + 8;
+        lv_obj_set_pos(star.obj, x, star.y);
+    }
+    for (const auto& bar : manual_bars_) {
+        const int y = 26 + static_cast<int>(3.0 + 3.0 * std::sin(s * 2.0 + bar.phase));
+        lv_obj_set_pos(bar.obj[0], kInset + 1, y);
+        lv_obj_set_pos(bar.obj[1], kInset + 1, y + 1);
+        lv_obj_set_pos(bar.obj[2], kInset + 1, y + 3);
+    }
+
+    static const uint32_t cycle[4] = {0xf1ebd8, 0xf3c93a, 0xe8503f, 0xf08a2a};
+    const int pos = static_cast<int>(s * 55.0);
+    const int first = pos / kScrollAdvance;
+    const int frac = pos % kScrollAdvance;
+    const int n = static_cast<int>(manual_scroll_.size());
+    const bool retext = first != manual_scroll_first_;
+    manual_scroll_first_ = first;
+    for (int i = 0; i < kScrollSlots; ++i) {
+        lv_obj_t* c = manual_chars_[static_cast<size_t>(i)];
+        if (retext && n > 0) {
+            lv_label_set_text(c, manual_scroll_[static_cast<size_t>((first + i) % n)].c_str());
+        }
+        lv_obj_set_pos(c, kInset + i * kScrollAdvance - frac, kScrollerTop + 3 + static_cast<int>(2.0 * std::sin(s * 4.0 + i * 0.45)));
+        const int color_index = (first + i + static_cast<int>(s * 4.0)) % 4;
+        if (manual_char_color_[static_cast<size_t>(i)] != color_index) {
+            manual_char_color_[static_cast<size_t>(i)] = color_index;
+            lv_obj_set_style_text_color(c, lv_color_hex(cycle[color_index]), 0);
+        }
+    }
 }
 
 void ZeroTagUi::render_cap_setup() {

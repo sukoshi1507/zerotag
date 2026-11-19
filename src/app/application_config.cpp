@@ -96,6 +96,12 @@ bool load_application_config(const std::string& path,
                 config.uid_rotation = v;
             }
         }
+        if (section == "application" && key == "sound") {
+            bool v = true;
+            if (parse_bool(line.substr(separator + 1), v)) {
+                config.sound = v;
+            }
+        }
         if (section == "application" && key == "language") {
             config.language = lowercase(trim(line.substr(separator + 1)));
         }
