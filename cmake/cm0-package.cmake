@@ -133,9 +133,7 @@ configure_file(
     "${APP_GENERATED_DIR}/conffiles"
     @ONLY
 )
-set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
-    "${APP_GENERATED_DIR}/conffiles"
-    "${CMAKE_CURRENT_SOURCE_DIR}/packaging/postinst"
-)
+# No maintainer scripts: the store rejects scripts matching its "dangerous pattern" list (e.g. rm under /etc).
+set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${APP_GENERATED_DIR}/conffiles")
 
 include(CPack)
