@@ -109,7 +109,9 @@ Reply handle_type2(uint8_t* image, const uint8_t* rx, size_t n, const St25r3916:
     case 0x1B: // PWD_AUTH: always accepted, the PACK stored in the image is returned
         if (n == 5) {
             if (std::memcmp(rx + 1, page_ptr(kPasswordPage), 4) != 0) {
-                log("  PWD_AUTH password differs from the image (accepted anyway)");
+                if (log) {
+                    log("  PWD_AUTH password differs from the image (accepted anyway)");
+                }
             }
             r.data.assign(page_ptr(kPasswordPage + 1), page_ptr(kPasswordPage + 1) + 2);
             r.kind = Reply::Data;
