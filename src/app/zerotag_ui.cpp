@@ -62,11 +62,11 @@ std::string clip(const std::string& s, size_t n) {
 // ---------------------------------------------------------------------------
 
 ZeroTagUi::ZeroTagUi(AssetManager& assets, bool dark_mode, std::function<void()> request_quit,
-                     std::function<void(const std::string&)> persist_language)
+                     std::function<void(const std::string&, const std::string&)> persist_setting)
     : assets_(assets),
       dark_(dark_mode),
       request_quit_(std::move(request_quit)),
-      persist_language_(std::move(persist_language)) {
+      persist_setting_(std::move(persist_setting)) {
     (void)dark_; // the Famicom look is dark only
     pal_.background = lv_color_hex(0x101014);
     pal_.surface = lv_color_hex(0x1a1518);
@@ -271,7 +271,20 @@ void ZeroTagUi::start_emulation(const amiibo::Item& item) {
         return;
     }
     session_ = std::make_unique<platform::EmulationSession>();
-    if (!session_->start(*chip_, image, 0, error)) {
+    platform::EmulationSession::RotateUid rotate;
+    if (uid_rotation_ && keys_ok_) {
+        rotate = [this](uint8_t* data) {
+            amiibo::TagImage copy;
+            std::copy(data, data + copy.size(), copy.begin());
+            std::string e;
+            if (!amiibo::rotate_uid(*keys_, copy, e)) {
+                return false;
+            }
+            std::copy(copy.begin(), copy.end(), data);
+            return true;
+        };
+    }
+    if (!session_->start(*chip_, image, 0, error, rotate)) {
         emu_error_ = error;
         session_.reset();
         chip_.reset();
@@ -306,10 +319,24 @@ void ZeroTagUi::cycle_language(int direction) {
         next = i18n::next_language(next);
     }
     i18n::set_language(next);
-    if (persist_language_) {
-        persist_language_(i18n::code(next));
+    if (persist_setting_) {
+        persist_setting_("language", i18n::code(next));
     }
     say(i18n::format(Str::BannerLanguage, i18n::native_name(next)));
+    render();
+}
+
+void ZeroTagUi::toggle_rotation() {
+    if (!uid_rotation_ && !keys_ok_) {
+        say(tr(Str::KeysMissingF1), true); // the rotation re-signs the image: it needs the keys
+        render();
+        return;
+    }
+    uid_rotation_ = !uid_rotation_;
+    if (persist_setting_) {
+        persist_setting_("uid_rotation", uid_rotation_ ? "yes" : "no");
+    }
+    say(tr(uid_rotation_ ? Str::BannerRotationOn : Str::BannerRotationOff));
     render();
 }
 
@@ -336,7 +363,7 @@ void ZeroTagUi::tick() {
         dirty = true;
     }
 
-    if (screen_ == Screen::Emulating && session_) {
+    if (session_) {
         if (!session_->running()) {
             // The worker ended on its own (setup failure or timeout).
             const auto result = session_->finish();
@@ -349,9 +376,22 @@ void ZeroTagUi::tick() {
         } else {
             const auto& st = session_->stats();
             const uint32_t key = (st.reads.load() << 8) ^ (st.writes.load() << 4) ^ (st.field.load() ? 2u : 0u) ^
-                                 (st.selected.load() ? 1u : 0u) ^ ((lv_tick_elaps(emu_started_) / 1000u) << 20);
+                                 (st.selected.load() ? 1u : 0u) ^ ((lv_tick_elaps(emu_started_) / 1000u) << 20) ^
+                                 (st.rotations.load() << 14);
             if (key != last_stats_key_) {
                 last_stats_key_ = key;
+                dirty = true;
+            }
+            // Autosave once the reader is done with a burst of writes or after a UID rotation.
+            platform::EmulationSession::Image snapshot;
+            if (session_->poll_autosave(snapshot, 1500)) {
+                std::string error;
+                if (amiibo::Library::write_image(current_path_, snapshot, error)) {
+                    rescan_library();
+                    say(tr(Str::BannerAutosaved));
+                } else {
+                    say(i18n::format(Str::BannerSaveFailed, error.c_str()), true);
+                }
                 dirty = true;
             }
         }
@@ -413,6 +453,14 @@ bool ZeroTagUi::on_key(uint32_t key, bool long_pressed) {
         return true;
     }
     if (key == platform::kKeyHelp) {
+        if (!long_pressed) {
+            if (screen_ == Screen::Help) {
+                go(screen_before_help_);
+            } else {
+                screen_before_help_ = screen_;
+                go(Screen::Help);
+            }
+        }
         return true;
     }
     if (key == LV_KEY_ESC) {
@@ -517,6 +565,8 @@ bool ZeroTagUi::on_key(uint32_t key, bool long_pressed) {
                 say(tr(Str::BannerConfirmReset));
                 render();
             }
+        } else if (key == 'u') {
+            toggle_rotation();
         } else if (key == LV_KEY_DEL) {
             if (pending_confirm_ == 2) {
                 pending_confirm_ = 0;
@@ -537,30 +587,48 @@ bool ZeroTagUi::on_key(uint32_t key, bool long_pressed) {
         if (key == LV_KEY_UP) {
             settings_sel_ = std::max(0, settings_sel_ - 1);
         } else if (key == LV_KEY_DOWN) {
-            settings_sel_ = std::min(3, settings_sel_ + 1);
+            settings_sel_ = std::min(5, settings_sel_ + 1);
         } else if (settings_sel_ == 0 && key == LV_KEY_LEFT) {
             cycle_language(-1);
             return true;
-        } else if ((settings_sel_ == 0 && key == LV_KEY_RIGHT) || key == LV_KEY_ENTER) {
+        } else if (settings_sel_ == 1 && key == LV_KEY_LEFT) {
+            toggle_rotation();
+            return true;
+        } else if (key == LV_KEY_RIGHT || key == LV_KEY_ENTER) {
             switch (settings_sel_) {
             case 0:
                 cycle_language(1);
                 return true;
             case 1:
+                toggle_rotation();
+                return true;
+            case 2:
                 check_hardware();
                 break;
-            case 2:
+            case 3:
                 keys_ok_ = keys_->load(keys_path_, keys_error_);
                 rescan_library();
                 break;
-            default:
+            case 4:
                 rescan_library();
                 break;
+            default:
+                screen_before_help_ = Screen::Settings;
+                go(Screen::Help);
+                return true;
             }
         } else {
             return false;
         }
+        if (settings_sel_ < settings_top_) {
+            settings_top_ = settings_sel_;
+        }
+        if (settings_sel_ >= settings_top_ + 4) {
+            settings_top_ = settings_sel_ - 3;
+        }
         render();
+        return true;
+    case Screen::Help:
         return true;
     }
     return false;
@@ -603,6 +671,9 @@ void ZeroTagUi::on_key_release(uint32_t key) {
         break;
     case Screen::Settings:
         go(screen_before_settings_);
+        break;
+    case Screen::Help:
+        go(screen_before_help_);
         break;
     }
 }
@@ -839,6 +910,9 @@ void ZeroTagUi::render() {
     case Screen::Settings:
         render_settings();
         break;
+    case Screen::Help:
+        render_help();
+        break;
     }
     draw_frame();
 }
@@ -979,11 +1053,13 @@ void ZeroTagUi::render_detail() {
     const char* sig = !item->signature_checked ? tr(Str::SigUnchecked)
                                                : (item->signature_ok ? tr(Str::SigValid) : tr(Str::SigInvalid));
     const lv_color_t sig_color = !item->signature_checked ? dim_ : (item->signature_ok ? pal_.primary : pal_.error);
-    lv_obj_t* chip1 = box(root_, x, 59, 120, 15, pal_.button, 2, sig_color, 0);
-    lv_obj_t* c1 = text(chip1, sig, font(9), sig_color, 0, 0, 112);
+    lv_obj_t* chip1 = box(root_, x, 59, 106, 15, pal_.button, 2, sig_color, 0);
+    lv_obj_t* c1 = text(chip1, sig, font(9), sig_color, 0, 0, 98);
     lv_obj_align(c1, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_t* chip2 = box(root_, x + 126, 59, 58, 15, pal_.button, 2, pal_.cream, 0);
-    lv_obj_t* c2 = text(chip2, "NTAG215", font(9), pal_.text, 0, 0);
+    lv_obj_t* chip2 = box(root_, x + 110, 59, 94, 15, pal_.button, 2, uid_rotation_ ? pal_.primary : pal_.cream, 0);
+    lv_obj_t* c2 = text(chip2,
+                        std::string(tr(Str::ChipRotation)) + " " + tr(uid_rotation_ ? Str::ValueOn : Str::ValueOff),
+                        font(9), uid_rotation_ ? pal_.primary : pal_.text, 0, 0, 86);
     lv_obj_align(c2, LV_ALIGN_CENTER, 0, 0);
 
     char id[24];
@@ -1007,8 +1083,8 @@ void ZeroTagUi::render_detail() {
 
     render_footer({{tr(Str::KeyEnter), tr(Str::HintEmulate)},
                    {"R", tr(Str::HintNewUid)},
-                   {tr(Str::KeyDel), tr(Str::HintDelete)},
-                   {tr(Str::KeyEsc), tr(Str::HintBack)}});
+                   {"U", tr(Str::HintRotation)},
+                   {tr(Str::KeyDel), tr(Str::HintDelete)}});
 }
 
 void ZeroTagUi::render_emulating() {
@@ -1052,17 +1128,33 @@ void ZeroTagUi::render_emulating() {
         text(root_, selected ? tr(Str::EmuConnHelp) : tr(Str::EmuWaitHelp), font(9), dim_, x, 46, w, true);
         const uint32_t reads = running ? session_->stats().reads.load() : 0;
         const uint32_t writes = running ? session_->stats().writes.load() : 0;
+        const uint32_t rotations = running ? session_->stats().rotations.load() : 0;
         const uint32_t secs = lv_tick_elaps(emu_started_) / 1000u;
         char b[48];
-        text(root_, tr(Str::EmuReads), font(9), dim_, x, 94, 60);
+        text(root_, tr(Str::EmuReads), font(9), dim_, x, 90, 60);
         std::snprintf(b, sizeof(b), "%u", reads);
-        text(root_, b, font(9), pal_.text, x + 64, 94);
-        text(root_, tr(Str::EmuWrites), font(9), dim_, x, 108, 60);
+        text(root_, b, font(9), pal_.text, x + 64, 90);
+        text(root_, tr(Str::EmuWrites), font(9), dim_, x, 102, 60);
         const std::string writes_text = writes ? i18n::format(Str::EmuWritesPending, writes) : std::to_string(writes);
-        text(root_, writes_text, font(9), writes ? pal_.warning : pal_.text, x + 64, 108, w - 64);
-        text(root_, tr(Str::EmuDuration), font(9), dim_, x, 122, 60);
-        std::snprintf(b, sizeof(b), "%02u:%02u", secs / 60, secs % 60);
-        text(root_, b, font(9), pal_.text, x + 64, 122);
+        text(root_, writes_text, font(9), writes ? pal_.warning : pal_.text, x + 64, 102, w - 64);
+        std::string uid_text;
+        if (running) {
+            const auto img = session_->current_image();
+            char u[32];
+            std::snprintf(u, sizeof(u), "%02X:%02X:%02X:%02X:%02X:%02X:%02X", img[0], img[1], img[2], img[4], img[5],
+                          img[6], img[7]);
+            uid_text = u;
+        }
+        text(root_, "UID", font(9), dim_, x, 114, 60);
+        text(root_, uid_text, font(9), pal_.text, x + 64, 114, w - 64);
+        if (uid_rotation_) {
+            text(root_, tr(Str::EmuRotations), font(9), dim_, x, 126, 60);
+            text(root_, std::to_string(rotations), font(9), pal_.primary, x + 64, 126);
+        } else {
+            text(root_, tr(Str::EmuDuration), font(9), dim_, x, 126, 60);
+            std::snprintf(b, sizeof(b), "%02u:%02u", secs / 60, secs % 60);
+            text(root_, b, font(9), pal_.text, x + 64, 126);
+        }
     }
     if (banner_.empty()) {
         box(root_, kInset, kFootTop, kInnerW, kFootH, pal_.bar, 0);
@@ -1085,11 +1177,13 @@ void ZeroTagUi::render_settings() {
     struct Row {
         std::string title;
         std::string detail;
-        std::string value; // right side, language only
+        std::string value; // right side (language, rotation)
         int status;        // -1 none, 0 ok, 1 warning, 2 error
     };
     std::vector<Row> rows;
     rows.push_back({tr(Str::SettingsLanguage), "", std::string("< ") + i18n::native_name(i18n::language()) + " >", -1});
+    rows.push_back({tr(Str::SettingsRotation), tr(Str::HelpRotation),
+                    std::string("< ") + tr(uid_rotation_ ? Str::ValueOn : Str::ValueOff) + " >", -1});
     rows.push_back({tr(Str::SetupCap), cap_status_.empty() ? std::string(tr(Str::SetupNotChecked)) : clip(cap_status_, 70),
                     "", cap_ok_ ? 0 : 2});
     rows.push_back({keys_ok_ ? tr(Str::SetupKeysOk) : tr(Str::NoteKeysTitle),
@@ -1100,31 +1194,86 @@ void ZeroTagUi::render_settings() {
                                                library_.items().size(), db_.entries().size())
                                 : i18n::format(Str::SetupFolderAbsent, short_path(library_dir_).c_str()),
                     "", library_ok_ && db_ok_ ? 0 : 1});
+    rows.push_back({tr(Str::HelpTitle), tr(Str::HelpMenuHint), "", -1});
 
     const int rh = 30;
-    for (size_t i = 0; i < rows.size(); ++i) {
-        const int y = kContentTop + 3 + static_cast<int>(i) * rh;
-        const bool sel = static_cast<int>(i) == settings_sel_;
+    for (int slot = 0; slot < 4; ++slot) {
+        const int i = settings_top_ + slot;
+        if (i >= static_cast<int>(rows.size())) {
+            break;
+        }
+        const Row& row = rows[static_cast<size_t>(i)];
+        const int y = kContentTop + 3 + slot * rh;
+        const bool sel = i == settings_sel_;
         if (sel) {
             box(root_, kInset + 1, y, kInnerW - 2, rh - 2, lv_color_hex(0x2a1417), 0);
             cursor(kInset + 4, y + 10);
         }
-        text(root_, rows[i].title, font(11, sel), pal_.text, 24, y + 1, 150);
-        if (!rows[i].detail.empty()) {
-            text(root_, rows[i].detail, font(9), dim_, 24, y + 15, kInnerW - 52);
+        text(root_, row.title, font(11, sel), pal_.text, 24, y + 1, 150);
+        if (!row.detail.empty()) {
+            text(root_, row.detail, font(9), dim_, 24, y + 15, kInnerW - 52);
         }
-        if (!rows[i].value.empty()) {
-            lv_obj_t* v = text(root_, rows[i].value, font(11, true), pal_.primary, 0, 0);
+        if (!row.value.empty()) {
+            lv_obj_t* v = text(root_, row.value, font(11, true), pal_.primary, 0, 0);
             lv_obj_align(v, LV_ALIGN_TOP_RIGHT, -(kInset + 8), y + 7);
         }
-        if (rows[i].status >= 0) {
-            const lv_color_t c = rows[i].status == 0 ? pal_.primary : (rows[i].status == 1 ? pal_.warning : pal_.error);
+        if (row.status >= 0) {
+            const lv_color_t c = row.status == 0 ? pal_.primary : (row.status == 1 ? pal_.warning : pal_.error);
             box(root_, kScreenW - kInset - 16, y + 10, 8, 8, c, 0);
         }
+    }
+    if (rows.size() > 4) {
+        const int track = 4 * rh;
+        const int bar_h = track * 4 / static_cast<int>(rows.size());
+        const int bar_y = kContentTop + 3 + (track - bar_h) * settings_top_ / static_cast<int>(rows.size() - 4);
+        box(root_, kScreenW - kInset - 4, bar_y, 2, bar_h, pal_.border, 0);
     }
     render_footer({{tr(Str::KeyUpDown), tr(Str::HintChoose)},
                    {tr(Str::KeyEnter), tr(Str::HintChange)},
                    {tr(Str::KeyEsc), tr(Str::HintBack)}});
+}
+
+void ZeroTagUi::render_help() {
+    render_bar("ZEROTAG", tr(Str::HelpTitle));
+    std::vector<std::pair<std::string, std::string>> lines;
+    switch (screen_before_help_) {
+    case Screen::Catalogue:
+        lines = {{tr(Str::KeyUpDown), tr(Str::HelpChoose)}, {"a-z", tr(Str::HelpTypeSearch)},
+                 {tr(Str::KeyEnter), tr(Str::HelpCreate)}, {tr(Str::KeyTab), tr(Str::HelpToLibrary)},
+                 {tr(Str::KeyEsc), tr(Str::HelpClearBack)}};
+        break;
+    case Screen::Detail:
+        lines = {{tr(Str::KeyEnter), tr(Str::HelpEmulate)}, {"R", tr(Str::HelpNewUid)}, {"U", tr(Str::HelpRotation)},
+                 {tr(Str::KeyDel), tr(Str::HelpDelete)}, {tr(Str::KeyEsc), tr(Str::HelpBack)}};
+        break;
+    case Screen::Emulating:
+        lines = {{tr(Str::KeyEsc), tr(Str::HelpStopSave)}, {"", tr(Str::HelpAutosave)}};
+        break;
+    case Screen::Settings:
+        lines = {{tr(Str::KeyUpDown), tr(Str::HelpChoose)}, {tr(Str::KeyEnter), tr(Str::HelpChange)},
+                 {"< >", tr(Str::HelpChange)}, {tr(Str::KeyEsc), tr(Str::HelpBack)}};
+        break;
+    default:
+        lines = {{tr(Str::KeyUpDown), tr(Str::HelpChoose)}, {tr(Str::KeyEnter), tr(Str::HelpOpen)},
+                 {"a-z", tr(Str::HelpTypeFilter)}, {tr(Str::KeyTab), tr(Str::HelpToCatalogue)},
+                 {"F1", tr(Str::HelpSettings)}, {tr(Str::KeyEsc), tr(Str::HelpHoldQuit)}};
+        break;
+    }
+    int y = kContentTop + 6;
+    for (const auto& line : lines) {
+        if (!line.first.empty()) {
+            lv_obj_t* probe = text(root_, line.first, font(9), pal_.text, 0, 0);
+            lv_obj_update_layout(probe);
+            const int kw = lv_obj_get_width(probe) + 8;
+            lv_obj_delete(probe);
+            lv_obj_t* cap = box(root_, 12, y, kw, 13, pal_.surface, 2, pal_.cream, 0);
+            lv_obj_t* kl = text(cap, line.first, font(9), pal_.text, 0, 0);
+            lv_obj_align(kl, LV_ALIGN_CENTER, 0, 0);
+        }
+        text(root_, line.second, font(10), line.first.empty() ? dim_ : pal_.text, 78, y, kScreenW - 78 - 12);
+        y += 17;
+    }
+    render_footer({{tr(Str::KeyEsc), tr(Str::HintBack)}});
 }
 
 } // namespace app

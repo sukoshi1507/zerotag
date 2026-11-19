@@ -8,6 +8,9 @@
 
 #include <array>
 #include <atomic>
+#include <chrono>
+#include <functional>
+#include <mutex>
 #include <cstdint>
 #include <string>
 #include <thread>
@@ -35,10 +38,18 @@ public:
 
     // `chip` must be open and stay alive until finish() returns; nothing else may use it meanwhile.
     // seconds <= 0: run until request_stop().
-    bool start(St25r3916& chip, const Image& image, int seconds, std::string& error);
+    // `rotate_uid`, when set, is called after each read session (see St25r3916::EmulationOptions).
+    using RotateUid = std::function<bool(uint8_t* image)>;
+    bool start(St25r3916& chip, const Image& image, int seconds, std::string& error, RotateUid rotate_uid = {});
     void request_stop();
     bool running() const { return running_.load(); }
     const St25r3916::EmulationStats& stats() const { return stats_; }
+
+    // Autosave support: true once, with the current image, when the tag changed (a write or a UID rotation) and
+    // nothing changed for `quiet_ms` (the reader is done with its burst of writes).
+    bool poll_autosave(Image& out, uint32_t quiet_ms);
+    // The image as the reader currently sees it (UID included).
+    Image current_image() const;
 
     // Waits for the worker to end (after request_stop() or the timeout) and returns the outcome.
     Result finish();
@@ -51,6 +62,10 @@ private:
     Image initial_{};
     Image image_{};
     Result result_;
+    mutable std::mutex snapshot_mutex_;
+    Image snapshot_{};
+    bool dirty_{false};
+    std::chrono::steady_clock::time_point last_change_{};
 };
 
 } // namespace platform

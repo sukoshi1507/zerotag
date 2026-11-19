@@ -185,11 +185,13 @@ int Application::run() {
         }
     }
 
+    bool uid_rotation_enabled = false;
     ApplicationConfig config;
     std::string config_error;
     if (load_application_config(loaded_config_path, config, config_error)) {
         view_model.set_dark_mode(true); // the Famicom look is dark only (config.dark_mode is ignored)
         i18n::set_language(i18n::from_code(config.language));
+        uid_rotation_enabled = config.uid_rotation;
         LOG_INFO("loaded config: {} (dark_mode={})",
                  loaded_config_path,
                  config.dark_mode ? "yes" : "no");
@@ -219,12 +221,13 @@ int Application::run() {
 
     ZeroTagUi ui(
         assets, view_model.is_dark_mode(), [&view_model]() { view_model.request_quit(); },
-        [&user_config_path](const std::string& language) {
+        [&user_config_path](const std::string& key, const std::string& value) {
             std::string error;
-            if (!save_language(user_config_path, language, error)) {
-                LOG_WARN("failed to save language to {}: {}", user_config_path, error);
+            if (!save_setting(user_config_path, key, value, error)) {
+                LOG_WARN("failed to save {} to {}: {}", key, user_config_path, error);
             }
         });
+    ui.set_uid_rotation(uid_rotation_enabled);
     ui.start();
     platform::set_global_key_listener(
         [](uint32_t key, const char*, bool long_pressed, void* user_data) {

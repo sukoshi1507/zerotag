@@ -186,8 +186,10 @@ bool St25r3916::transmit_bits(const uint8_t* frame, size_t bits, bool with_crc) 
            direct_command(with_crc ? kCmdTransmitWithCrc : kCmdTransmitWithoutCrc);
 }
 
-bool St25r3916::emulate_ntag215(uint8_t* image, int seconds, const EmulationLog& log_fn, std::string& error,
-                                const std::function<bool()>& stop, EmulationStats* stats) {
+bool St25r3916::emulate_ntag215(uint8_t* image, int seconds, const EmulationOptions& options, std::string& error) {
+    const EmulationLog& log_fn = options.log;
+    const std::function<bool()>& stop = options.stop;
+    EmulationStats* stats = options.stats;
     auto log = [&](const std::string& s) {
         if (log_fn) {
             log_fn(s);
@@ -210,22 +212,24 @@ bool St25r3916::emulate_ntag215(uint8_t* image, int seconds, const EmulationLog&
     field_off();
 
     // 7-byte UID from pages 0-2 (the BCC bytes are not part of it), ATQA 0x0044, SAK 0x00.
-    uint8_t pt[15] = {};
-    pt[0] = image[0];
-    pt[1] = image[1];
-    pt[2] = image[2];
-    pt[3] = image[4];
-    pt[4] = image[5];
-    pt[5] = image[6];
-    pt[6] = image[7];
-    pt[10] = 0x44; // ATQA LSB
-    pt[11] = 0x00;
-    pt[12] = 0x04; // SAK level 1: cascade bit set (UID incomplete)
-    pt[13] = 0x00; // SAK level 2
-    pt[14] = 0x00; // SAK level 3
-    log("UID " + hex(pt, 7));
-
-    if (!modify_reg(kRegAuxiliaryDefinition, 0x30, 0x10) /* 7-byte UID */ || !load_pt_memory_a(pt, sizeof(pt))) {
+    auto load_identity = [&]() {
+        uint8_t pt[15] = {};
+        pt[0] = image[0];
+        pt[1] = image[1];
+        pt[2] = image[2];
+        pt[3] = image[4];
+        pt[4] = image[5];
+        pt[5] = image[6];
+        pt[6] = image[7];
+        pt[10] = 0x44; // ATQA LSB
+        pt[11] = 0x00;
+        pt[12] = 0x04; // SAK level 1: cascade bit set (UID incomplete)
+        pt[13] = 0x00; // SAK level 2
+        pt[14] = 0x00; // SAK level 3
+        log("UID " + hex(pt, 7));
+        return modify_reg(kRegAuxiliaryDefinition, 0x30, 0x10) /* 7-byte UID */ && load_pt_memory_a(pt, sizeof(pt));
+    };
+    if (!load_identity()) {
         return fail("passive target memory");
     }
     write_reg(kRegModeDefinition, kModeBitrateDetection);                // target, NFC-A, bit rate detection
@@ -354,12 +358,36 @@ bool St25r3916::emulate_ntag215(uint8_t* image, int seconds, const EmulationLog&
         return State::Off;
     };
 
+    unsigned session_reads = 0;
+    auto end_session = [&]() {
+        if (options.rotate_uid && session_reads > 0) {
+            if (options.rotate_uid(image)) {
+                if (!load_identity()) {
+                    log("could not load the new UID into the chip");
+                }
+                if (stats) {
+                    ++stats->rotations;
+                }
+                if (options.on_change) {
+                    options.on_change(image);
+                }
+            } else {
+                log("UID rotation failed, keeping the current UID");
+            }
+        }
+        session_reads = 0;
+    };
+
     auto change = [&](State next) {
         const State actual = enter(next);
         if (actual != state) {
             log(std::string("state ") + state_name(state) + " -> " + state_name(actual));
         }
+        const State previous = state;
         state = actual;
+        if (actual == State::Off && previous != State::Off) {
+            end_session();
+        }
         if (stats) {
             stats->field = (actual != State::Off);
             stats->selected = (actual == State::Active);
@@ -469,11 +497,17 @@ bool St25r3916::emulate_ntag215(uint8_t* image, int seconds, const EmulationLog&
             ++frames;
             const Reply reply = handle_type2(image, rx, n, log_fn);
             send_reply(reply);
-            if (stats) {
-                if (reply.kind == Reply::Data) {
+            if (reply.kind == Reply::Data) {
+                ++session_reads;
+                if (stats) {
                     ++stats->reads;
-                } else if (reply.kind == Reply::Ack) {
+                }
+            } else if (reply.kind == Reply::Ack) {
+                if (stats) {
                     ++stats->writes;
+                }
+                if (options.on_change) {
+                    options.on_change(image);
                 }
             }
             log("  rx " + hex(rx, n) +

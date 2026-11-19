@@ -35,20 +35,21 @@ struct UiPalette {
 class ZeroTagUi {
 public:
     ZeroTagUi(AssetManager& assets, bool dark_mode, std::function<void()> request_quit,
-              std::function<void(const std::string&)> persist_language = {});
+              std::function<void(const std::string&, const std::string&)> persist_setting = {});
     ~ZeroTagUi();
 
     ZeroTagUi(const ZeroTagUi&) = delete;
     ZeroTagUi& operator=(const ZeroTagUi&) = delete;
 
     void start();
+    void set_uid_rotation(bool enabled) { uid_rotation_ = enabled; }
 
     // Called by the platform key router. Returns true when the key was used.
     bool on_key(uint32_t key, bool long_pressed);
     void on_key_release(uint32_t key);
 
 private:
-    enum class Screen { Library, Catalogue, Detail, Emulating, Settings };
+    enum class Screen { Library, Catalogue, Detail, Emulating, Settings, Help };
 
     // ---- data ----
     void load_data();
@@ -70,6 +71,7 @@ private:
     void tick();
     void check_hardware();
     void cycle_language(int direction);
+    void toggle_rotation();
 
     bool handle_text_key(uint32_t key, std::string& query);
     void move_selection(int delta, size_t count, int& selected, int& top, int rows);
@@ -83,6 +85,7 @@ private:
     void render_detail();
     void render_emulating();
     void render_settings();
+    void render_help();
 
     lv_obj_t* box(lv_obj_t* parent, int x, int y, int w, int h, lv_color_t fill, int border_w = 0,
                   lv_color_t border = lv_color_black(), int radius = 0);
@@ -105,7 +108,7 @@ private:
     AssetManager& assets_;
     bool dark_;
     std::function<void()> request_quit_;
-    std::function<void(const std::string&)> persist_language_;
+    std::function<void(const std::string&, const std::string&)> persist_setting_;
     UiPalette pal_{};
     lv_color_t dim_{};
     lv_obj_t* root_{nullptr};
@@ -144,6 +147,9 @@ private:
     uint32_t banner_until_{0};
     int pending_confirm_{0}; // 1: reset, 2: delete (second press confirms)
     int settings_sel_{0};
+    int settings_top_{0};
+    Screen screen_before_help_{Screen::Library};
+    bool uid_rotation_{false};
     std::string cap_status_;
     bool cap_ok_{false};
 

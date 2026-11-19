@@ -90,6 +90,12 @@ bool load_application_config(const std::string& path,
         }
 
         const auto key = lowercase(trim(line.substr(0, separator)));
+        if (section == "application" && key == "uid_rotation") {
+            bool v = false;
+            if (parse_bool(line.substr(separator + 1), v)) {
+                config.uid_rotation = v;
+            }
+        }
         if (section == "application" && key == "language") {
             config.language = lowercase(trim(line.substr(separator + 1)));
         }
@@ -182,7 +188,7 @@ bool save_application_config(const std::string& path,
     return true;
 }
 
-bool save_language(const std::string& path, const std::string& language, std::string& error) {
+bool save_setting(const std::string& path, const std::string& key, const std::string& value, std::string& error) {
     error.clear();
     const std::filesystem::path config_path(path);
     if (!config_path.parent_path().empty()) {
@@ -219,7 +225,7 @@ bool save_language(const std::string& path, const std::string& language, std::st
             }
         }
     }
-    const std::string entry = "language=" + language;
+    const std::string entry = key + "=" + value;
     if (begin == std::string::npos) {
         if (!lines.empty() && !lines.back().empty()) {
             lines.emplace_back();
@@ -229,7 +235,7 @@ bool save_language(const std::string& path, const std::string& language, std::st
     } else {
         bool replaced = false;
         for (std::size_t i = begin; i < end; ++i) {
-            if (is_key(lines[i], "language")) {
+            if (is_key(lines[i], key)) {
                 lines[i] = entry;
                 replaced = true;
                 break;

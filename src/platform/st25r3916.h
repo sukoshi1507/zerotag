@@ -81,12 +81,24 @@ public:
     struct EmulationStats {
         std::atomic<uint32_t> reads{0};        // READ / FAST_READ / GET_VERSION / READ_SIG / PWD_AUTH answered
         std::atomic<uint32_t> writes{0};       // WRITE commands accepted (the image in memory changed)
+        std::atomic<uint32_t> rotations{0};    // UID rotations done after a read session
         std::atomic<bool> field{false};        // a reader field is present
         std::atomic<bool> selected{false};     // a reader has selected the tag
     };
 
-    bool emulate_ntag215(uint8_t* image, int seconds, const EmulationLog& log, std::string& error,
-                         const std::function<bool()>& stop = {}, EmulationStats* stats = nullptr);
+    struct EmulationOptions {
+        EmulationLog log;
+        std::function<bool()> stop;            // polled; true ends the emulation
+        EmulationStats* stats{nullptr};
+        // Called (on the emulation thread) when a read session has ended, i.e. the reader field dropped after
+        // at least one answered read. It may rewrite the image in place (new UID, re-signed) and returns true
+        // on success; the chip is then reprogrammed with the new UID.
+        std::function<bool(uint8_t* image)> rotate_uid;
+        // Called (on the emulation thread) each time the image changed: a WRITE or a UID rotation.
+        std::function<void(const uint8_t* image)> on_change;
+    };
+
+    bool emulate_ntag215(uint8_t* image, int seconds, const EmulationOptions& options, std::string& error);
 
 private:
     St25r3916Config config_;
