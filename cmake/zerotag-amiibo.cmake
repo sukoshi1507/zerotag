@@ -36,6 +36,8 @@ set(_AMIITOOL_DIR "${CMAKE_CURRENT_LIST_DIR}/../third_party/amiitool")
 
 add_library(${PROJECT_NAME}_amiibo STATIC
     "${CMAKE_CURRENT_LIST_DIR}/../src/amiibo/amiibo_image.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../src/amiibo/amiibo_db.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../src/amiibo/amiibo_library.cpp"
     "${_AMIITOOL_DIR}/amiibo.c"
     "${_AMIITOOL_DIR}/drbg.c"
     "${_AMIITOOL_DIR}/keygen.c"
@@ -55,7 +57,7 @@ if(ZEROTAG_BUILD_TOOLS)
     set(_PLATFORM_SRC "${CMAKE_CURRENT_LIST_DIR}/../src/platform")
 
     # Host tools: they only need the amiibo library and the keys file given on the command line.
-    foreach(tool amiibo_gen amiibo_verify amiibo_gen_test)
+    foreach(tool amiibo_gen amiibo_verify amiibo_gen_test amiibo_library_test)
         add_executable(zerotag_${tool} "${_TOOLS}/${tool}.cpp")
         target_link_libraries(zerotag_${tool} PRIVATE ${PROJECT_NAME}_amiibo)
     endforeach()
