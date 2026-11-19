@@ -9,9 +9,8 @@ include(GNUInstallDirs)
 set(APP_DISPLAY_NAME "ZeroTag" CACHE STRING "Human-readable application name used by launchers and package filename")
 set(APP_DEBIAN_REVISION "rev1" CACHE STRING "Debian package revision/vendor suffix")
 set(APP_DEBIAN_ARCHITECTURE "arm64" CACHE STRING "Debian package architecture")
-# Deliberately a placeholder: the store rejects packages whose Maintainer is
-# still a template/M5Stack identity, so set your own name and email here.
-set(APP_MAINTAINER "TODO Your Name <todo@example.invalid>" CACHE STRING "Debian package maintainer")
+# Contact used in the .deb control file (GitHub noreply address, no personal e-mail).
+set(APP_MAINTAINER "sukoshi1507 <17269210+sukoshi1507@users.noreply.github.com>" CACHE STRING "Debian package maintainer")
 set(APP_PACKAGE_DESCRIPTION "Amiibo emulator for CardputerZero (ST25R3916 NFC)" CACHE STRING "Debian package summary")
 set(APP_INSTALL_SYSTEMD_SERVICE ON CACHE BOOL "Install a systemd service file for embedded deployments")
 
@@ -42,10 +41,21 @@ install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets/audio/"
     DESTINATION "${CMAKE_INSTALL_DATADIR}/${APP_NAME}/audio"
     PATTERN ".DS_Store" EXCLUDE
 )
-install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets/amiibo/"
-    DESTINATION "${CMAKE_INSTALL_DATADIR}/${APP_NAME}/amiibo"
-    PATTERN ".DS_Store" EXCLUDE
-)
+# The amiibo thumbnails are Nintendo artwork fetched by tools/fetch_amiibo_images.py: they are not part of the
+# repository and, by default, not packaged. Turn this on for a private build that includes your own copy.
+option(ZEROTAG_BUNDLE_AMIIBO_IMAGES "Package assets/amiibo/images (private builds only)" OFF)
+if(ZEROTAG_BUNDLE_AMIIBO_IMAGES)
+    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets/amiibo/"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/${APP_NAME}/amiibo"
+        PATTERN ".DS_Store" EXCLUDE
+    )
+else()
+    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets/amiibo/"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/${APP_NAME}/amiibo"
+        PATTERN ".DS_Store" EXCLUDE
+        PATTERN "images" EXCLUDE
+    )
+endif()
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/"
     DESTINATION "${CMAKE_INSTALL_DATADIR}/${APP_NAME}/fonts"
     PATTERN ".DS_Store" EXCLUDE
