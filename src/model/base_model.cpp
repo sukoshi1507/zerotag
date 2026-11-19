@@ -9,7 +9,7 @@
 namespace model {
 
 const char* BaseModel::app_title() const {
-    return "zerotag";
+    return "ZeroTag";
 }
 
 const char* BaseModel::greeting() const {
