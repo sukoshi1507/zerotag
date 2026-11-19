@@ -11,6 +11,12 @@ constexpr size_t kNavKeyCount = 5;
 constexpr uint32_t kSpecialKeyBase = 0x200000U;
 constexpr uint32_t kKeyPrintScreen = kSpecialKeyBase | 18U;
 constexpr uint32_t kKeyHelp = kSpecialKeyBase | 19U;
+constexpr uint32_t kKeyPageUp = kSpecialKeyBase | 20U;
+constexpr uint32_t kKeyPageDown = kSpecialKeyBase | 21U;
+constexpr uint32_t kKeyF1 = kSpecialKeyBase | 22U;
+constexpr uint32_t kKeyF2 = kSpecialKeyBase | 23U;
+constexpr uint32_t kKeyF3 = kSpecialKeyBase | 24U;
+constexpr uint32_t kKeyF4 = kSpecialKeyBase | 25U;
 
 using KeyReleaseListener = void (*)(uint32_t key, const char* key_name, void* user_data);
 using GlobalKeyListener = bool (*)(uint32_t key,

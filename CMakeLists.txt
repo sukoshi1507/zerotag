@@ -598,6 +598,7 @@ target_link_libraries(${PROJECT_NAME}_core
     PUBLIC
         lvgl
         logger
+        ${PROJECT_NAME}_amiibo
         ${PROJECT_NAME}_view
         ${PROJECT_NAME}_viewmodel
         ${PROJECT_NAME}_platform

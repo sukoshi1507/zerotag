@@ -209,9 +209,63 @@ uint32_t map_evdev_key(uint16_t code) {
             return kKeyPrintScreen;
         case KEY_HELP:
             return kKeyHelp;
+        case KEY_UP:
+            return LV_KEY_UP;
+        case KEY_DOWN:
+            return LV_KEY_DOWN;
+        case KEY_ENTER:
+        case KEY_KPENTER:
+            return LV_KEY_ENTER;
+        case KEY_BACKSPACE:
+            return LV_KEY_BACKSPACE;
+        case KEY_DELETE:
+            return LV_KEY_DEL;
+        case KEY_TAB:
+            return '\t';
+        case KEY_SPACE:
+            return ' ';
+        case KEY_PAGEUP:
+            return kKeyPageUp;
+        case KEY_PAGEDOWN:
+            return kKeyPageDown;
+        case KEY_F1:
+            return kKeyF1;
+        case KEY_F2:
+            return kKeyF2;
+        case KEY_F3:
+            return kKeyF3;
+        case KEY_F4:
+            return kKeyF4;
+        case KEY_MINUS:
+            return '-';
+        case KEY_DOT:
+            return '.';
+        case KEY_APOSTROPHE:
+            return '\'';
         default:
-            return 0;
+            break;
     }
+
+    // Letters and digits (Linux key codes are not contiguous: three keyboard rows).
+    static const char kRowQ[] = "qwertyuiop";   // KEY_Q .. KEY_P  (16..25)
+    static const char kRowA[] = "asdfghjkl";    // KEY_A .. KEY_L  (30..38)
+    static const char kRowZ[] = "zxcvbnm";      // KEY_Z .. KEY_M  (44..50)
+    if (code >= KEY_Q && code <= KEY_P) {
+        return static_cast<uint32_t>(kRowQ[code - KEY_Q]);
+    }
+    if (code >= KEY_A && code <= KEY_L) {
+        return static_cast<uint32_t>(kRowA[code - KEY_A]);
+    }
+    if (code >= KEY_Z && code <= KEY_M) {
+        return static_cast<uint32_t>(kRowZ[code - KEY_Z]);
+    }
+    if (code >= KEY_1 && code <= KEY_9) {
+        return static_cast<uint32_t>('1' + (code - KEY_1));
+    }
+    if (code == KEY_0) {
+        return '0';
+    }
+    return 0;
 }
 
 bool has_nav_keys(int fd) {
@@ -423,6 +477,12 @@ const char* describe_key(uint32_t key) {
             return "PrintScreen";
         case kKeyHelp:
             return "Help";
+        case LV_KEY_UP:
+            return "Up";
+        case LV_KEY_DOWN:
+            return "Down";
+        case LV_KEY_ENTER:
+            return "Enter";
         default:
             break;
     }
