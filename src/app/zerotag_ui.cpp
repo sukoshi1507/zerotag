@@ -344,6 +344,11 @@ void ZeroTagUi::check_hardware() {
     cap_ok_ = false;
     cap_status_.clear();
     std::string error;
+    std::error_code ec;
+    if (!fs::exists(platform::St25r3916Config{}.spi_device, ec)) {
+        cap_status_ = tr(Str::ErrSpi); // the overlay is not loaded: nothing to open yet
+        return;
+    }
     platform::St25r3916 chip;
     if (chip.open(error)) {
         cap_ok_ = true;

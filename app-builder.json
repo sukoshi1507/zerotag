@@ -1,26 +1,27 @@
 {
-  "app_name": "zerotag",
+  "app_name": "ZeroTag",
   "package_name": "zerotag",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Amiibo emulator for CardputerZero with the Cap CC1101 (ST25R3916 NFC)",
   "store": {
     "summary": "Amiibo library and emulator for the CardputerZero with the NFC Cap",
-    "description": "ZeroTag turns the CardputerZero and its Cap CC1101 (ST25R3916) into an amiibo emulator. Browse your own backups, create blank signed amiibo from a 954-character catalogue, emulate them on a Switch, 3DS or Wii U, and keep what the game writes. Optional UID rotation gives a new identity after each read. Interface in French, English and Japanese. You provide your own key_retail.bin; nothing from Nintendo is bundled.",
+    "description": "ZeroTag turns the CardputerZero and its Cap CC1101 (ST25R3916) into an amiibo library and emulator.\n\n- Library of your own 540-byte backups (put them in ~/amiibo), recognised automatically, with signature check.\n- Catalogue of 954 characters: create blank, correctly signed amiibo.\n- NTAG215 emulation, verified with a Flipper Zero and a Nintendo Switch 2. What the game writes is saved to the file (autosave), signatures stay valid.\n- Optional UID rotation after each read, keeping the data.\n- Famicom-style interface in French, English and Japanese, with in-app help (Fn+H).\n\nSetup: copy your own key_retail.bin to ~/.zerotag/ and, after each boot, run once: sudo /usr/lib/zerotag/cap-setup (loads the SPI overlay the Cap needs). Optional thumbnails: see the README. Nothing from Nintendo is bundled.",
     "categories": [
-      "Utility"
+      "Emulators",
+      "Hardware & IoT"
     ],
     "screenshots": [
       "screenshot/settings-fr.png",
       "screenshot/settings-ja.png"
     ],
-    "icon": "assets/images/zerotag.png",
+    "icon": "packaging/icon.png",
     "license": "MIT",
     "source_repo": "https://github.com/sukoshi1507/zerotag",
     "author": {
       "github": "sukoshi1507",
       "display_name": "sukoshi1507"
     },
-    "share_code": "TODO",
+    "share_code": "ZTAG",
     "permissions": {
       "camera": false,
       "microphone": false,
@@ -29,6 +30,17 @@
       "additional_hardware": true,
       "background_service": false,
       "external_display": false
+    },
+    "locales": {
+      "fr": {
+        "title": "ZeroTag",
+        "summary": "Bibliothèque et émulateur d'amiibo pour le CardputerZero avec le Cap NFC"
+      },
+      "ja": {
+        "title": "ZeroTag",
+        "summary": "CardputerZero用amiiboライブラリ＆エミュレーター(NFC Cap対応)"
+      }
     }
-  }
+  },
+  "bin_name": "zerotag"
 }

@@ -12,7 +12,8 @@ set(APP_DEBIAN_ARCHITECTURE "arm64" CACHE STRING "Debian package architecture")
 # Contact used in the .deb control file (GitHub noreply address, no personal e-mail).
 set(APP_MAINTAINER "sukoshi1507 <17269210+sukoshi1507@users.noreply.github.com>" CACHE STRING "Debian package maintainer")
 set(APP_PACKAGE_DESCRIPTION "Amiibo emulator for CardputerZero (ST25R3916 NFC)" CACHE STRING "Debian package summary")
-set(APP_INSTALL_SYSTEMD_SERVICE ON CACHE BOOL "Install a systemd service file for embedded deployments")
+# Off: store apps must not ship systemd services that run as root, and ZeroTag runs from APPLaunch.
+set(APP_INSTALL_SYSTEMD_SERVICE OFF CACHE BOOL "Install a systemd service file for embedded deployments")
 
 set(APP_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/package")
 configure_file(
@@ -80,12 +81,9 @@ if(APP_INSTALL_SYSTEMD_SERVICE)
     )
 endif()
 
-# Boot-time loader for the SPI overlay used by the Cap (enabled by the package's postinst)
-install(PROGRAMS "${CMAKE_CURRENT_SOURCE_DIR}/packaging/load-spi-overlay.sh"
+# Helper that loads the SPI overlay the Cap needs; the user runs it with sudo after each boot.
+install(PROGRAMS "${CMAKE_CURRENT_SOURCE_DIR}/packaging/cap-setup"
     DESTINATION "${CMAKE_INSTALL_LIBDIR}/zerotag"
-)
-install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/packaging/zerotag-spi.service"
-    DESTINATION "${CMAKE_INSTALL_LIBDIR}/systemd/system"
 )
 
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/README.md"
@@ -132,7 +130,6 @@ configure_file(
 set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
     "${APP_GENERATED_DIR}/conffiles"
     "${CMAKE_CURRENT_SOURCE_DIR}/packaging/postinst"
-    "${CMAKE_CURRENT_SOURCE_DIR}/packaging/prerm"
 )
 
 include(CPack)

@@ -3,7 +3,9 @@
 """Draws the ZeroTag launcher icon (a Famicom-style cartridge, 20x20 pixel art) and writes it at the sizes
 used by assets/images/zerotag*.png. Pure standard library (zlib + struct), no image library needed.
 
-usage: make_icon.py <output_dir>
+usage: make_icon.py <output_dir> [<store_icon_dir>]
+
+The optional second directory receives icon.png (260x260), the store listing icon (128-512 px square).
 """
 import struct
 import sys
@@ -77,3 +79,7 @@ if __name__ == "__main__":
         with open(f"{target}/{name}", "wb") as f:
             f.write(render(scale))
         print("wrote", name, 20 * scale)
+    if len(sys.argv) > 2:
+        with open(f"{sys.argv[2]}/icon.png", "wb") as f:
+            f.write(render(13))
+        print("wrote icon.png", 20 * 13)

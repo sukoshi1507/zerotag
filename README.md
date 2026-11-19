@@ -35,9 +35,15 @@ Download the `.deb` from the [releases page](../../releases) and install it on t
 sudo apt install ./ZeroTag_<version>_rev1_arm64.deb
 ```
 
-The package adds ZeroTag to the APPLaunch menu and installs `zerotag-spi.service`, a small boot-time service that
-loads the SPI overlay (`spi0-spidev2-gpio22-overlay`) the Cap needs. The application itself runs as your user
-(it needs the `spi` and `gpio` groups, which the default user has).
+The package adds ZeroTag to the APPLaunch menu. The application runs as your user (it needs the `spi` and `gpio`
+groups, which the default user has) and installs no background service.
+
+The Cap needs an SPI device-tree overlay, which only root can load and which is lost at every reboot. Run this
+once after each boot, before using ZeroTag (the app tells you when it is missing):
+
+```shell
+sudo /usr/lib/zerotag/cap-setup
+```
 
 Then, as the device user:
 
@@ -87,6 +93,7 @@ amiibo code (`zerotag_amiibo_library_test`, which needs your keys: `tools/amiibo
 
 ## How it works
 
+- `packaging/cap-setup`: the root helper that loads the SPI overlay (`spi0-spidev2-gpio22-overlay`).
 - `src/platform/st25r3916*.cpp`: a Linux userspace driver for the ST25R3916 (SPI, GPIO power) and an NFC-A
   card emulation state machine that serves the NTAG215 command set (READ, FAST_READ, GET_VERSION, READ_SIG,
   PWD_AUTH, WRITE, HLTA) in software.

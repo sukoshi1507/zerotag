@@ -69,7 +69,7 @@ X(EmuFooterNote,  "Les écritures du jeu sont enregistrées à l'arrêt.", "The 
 X(EmuStopButton,  "ÉCHAP  Stop", "ESC  Stop", "ESC  停止")
 X(EmuFailed,      "Émulation impossible", "Emulation failed", "エミュレーションできません")
 X(EmuInterrupted, "émulation interrompue", "emulation interrupted", "エミュレーションが中断されました")
-X(ErrSpi,         "Port SPI absent : redémarre l'appareil (service zerotag-spi).", "SPI port missing: restart the device (zerotag-spi service).", "SPIポートがありません。本体を再起動してください(zerotag-spi)。")
+X(ErrSpi,         "Port SPI absent : lance sudo /usr/lib/zerotag/cap-setup", "SPI port missing: run sudo /usr/lib/zerotag/cap-setup", "SPIポートがありません: sudo /usr/lib/zerotag/cap-setup を実行")
 X(ErrPerms,       "Droits insuffisants sur le Cap (groupes spi et gpio).", "Not allowed to use the Cap (groups spi and gpio).", "Capへのアクセス権がありません(spi/gpioグループ)。")
 X(ErrGeneric,     "Vérifie le Cap et relance (F1 : état).", "Check the Cap and retry (F1: status).", "Capを確認して再試行(F1: 状態)。")
 // ---- setup
