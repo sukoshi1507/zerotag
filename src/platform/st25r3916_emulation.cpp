@@ -332,7 +332,7 @@ bool St25r3916::emulate_ntag215(uint8_t* image, int seconds, const EmulationLog&
             data_flag = false;
             modify_reg(kRegNfcip1PassiveTarget, 0, kNfcipPtAutoA); // the software answers from now on
             take(kIrqPar | kIrqCrc | kIrqErr2 | kIrqErr1);
-            modify_mask_interrupts(kIrqRxe | kIrqTxe, 0);
+            modify_mask_interrupts(kIrqRxe, 0);
             return State::Active;
         case State::Halt:
             data_flag = false;
@@ -391,19 +391,6 @@ bool St25r3916::emulate_ntag215(uint8_t* image, int seconds, const EmulationLog&
         switch (state) {
         case State::Off:
             if (take(kIrqEon)) {
-                const auto t0 = std::chrono::steady_clock::now();
-                uint8_t aux = 0, rssi = 0, mode = 0, pt = 0, pta = 0, op = 0, rx1 = 0;
-                read_reg(kRegAuxiliaryDisplay, aux);
-                read_reg(0x2F, rssi);
-                read_reg(kRegModeDefinition, mode);
-                read_reg(kRegNfcip1PassiveTarget, pt);
-                read_reg(kRegPassiveTargetDisplay, pta);
-                read_reg(kRegOperationControl, op);
-                read_reg(kRegReceiverConfiguration1, rx1);
-                const auto us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count();
-                char b[160];
-                std::snprintf(b, sizeof(b), "  EON aux=%02X rssi=%02X mode=%02X pt=%02X pta=%02X op=%02X rx1=%02X (7 reads: %lld us)", aux, rssi, mode, pt, pta, op, rx1, static_cast<long long>(us));
-                log(b);
                 change(State::Idle);
             }
             break;
@@ -412,15 +399,6 @@ bool St25r3916::emulate_ntag215(uint8_t* image, int seconds, const EmulationLog&
             const uint32_t irq = take(kIrqNfct | kIrqRxe | kIrqEof | kIrqRxePta);
             if (!irq) {
                 break;
-            }
-            {
-                char b[96];
-                uint8_t aux = 0, rssi = 0, op = 0;
-                read_reg(kRegAuxiliaryDisplay, aux);
-                read_reg(0x2F, rssi);
-                read_reg(kRegOperationControl, op);
-                std::snprintf(b, sizeof(b), "  idle irq=%08X aux=%02X rssi=%02X op=%02X", irq, aux, rssi, op);
-                log(b);
             }
             if (irq & kIrqNfct) {
                 read_bitrate();
@@ -483,22 +461,8 @@ bool St25r3916::emulate_ntag215(uint8_t* image, int seconds, const EmulationLog&
             }
             n -= 2; // CRC_A
             ++frames;
-            const auto t_rx = std::chrono::steady_clock::now();
             const Reply reply = handle_type2(image, rx, n, log_fn);
             send_reply(reply);
-            const auto t_tx = std::chrono::steady_clock::now();
-            uint32_t txirq = 0;
-            for (int i = 0; i < 20 && !(txirq & kIrqTxe); ++i) {
-                poll();
-                txirq |= take(kIrqTxe | kIrqErr1 | kIrqErr2 | kIrqPar | kIrqCrc);
-            }
-            {
-                char b[96];
-                std::snprintf(b, sizeof(b), "  tx cmd took %lld us, tx irq=%08X",
-                              static_cast<long long>(std::chrono::duration_cast<std::chrono::microseconds>(t_tx - t_rx).count()),
-                              txirq);
-                log(b);
-            }
             log("  rx " + hex(rx, n) +
                 (reply.kind == Reply::Data  ? "  -> " + std::to_string(reply.data.size()) + " bytes"
                  : reply.kind == Reply::Ack ? "  -> ACK"
