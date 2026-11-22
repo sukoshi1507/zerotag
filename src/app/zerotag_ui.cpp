@@ -9,6 +9,7 @@
 #include "device_status.h"
 #include "i18n.h"
 #include "linux_input.h"
+#include "online_update.h"
 #include "logger.h"
 #include "screenshot_service.h"
 
@@ -18,6 +19,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -187,6 +189,7 @@ ZeroTagUi::ZeroTagUi(AssetManager& assets, bool dark_mode, std::function<void()>
 
 ZeroTagUi::~ZeroTagUi() {
     stop_scan();
+    stop_online_update();
     manual_leave();
     if (timer_) {
         lv_timer_delete(timer_);
@@ -228,10 +231,8 @@ void ZeroTagUi::load_data() {
 
     db_path_ = assets_.resolve("amiibo/amiibo_db.json").string();
     images_dir_ = assets_.resolve("amiibo/images").string();
-    db_ok_ = db_.load(db_path_, db_error_);
-    if (!db_ok_) {
-        LOG_WARN("catalogue: {}", db_error_);
-    }
+    online_path_ = home_dir() + "/.zerotag/amiibo_online.json";
+    load_catalogue();
 
     keys_ = std::make_unique<amiibo::Keys>();
     keys_ok_ = keys_->load(keys_path_, keys_error_);
@@ -244,6 +245,25 @@ void ZeroTagUi::load_data() {
         LOG_WARN("library state: {}", state_error);
     }
     rescan_library();
+}
+
+void ZeroTagUi::load_catalogue() {
+    db_ok_ = db_.load(db_path_, db_error_);
+    if (!db_ok_) {
+        LOG_WARN("catalogue: {}", db_error_);
+        return;
+    }
+    // The list downloaded by the optional online update adds the figures the bundled catalogue does not know.
+    std::error_code ec;
+    if (fs::is_regular_file(online_path_, ec)) {
+        std::string merge_error;
+        const size_t added = db_.merge(online_path_, merge_error);
+        if (!merge_error.empty()) {
+            LOG_WARN("online catalogue: {}", merge_error);
+        } else {
+            LOG_INFO("online catalogue: {} new amiibo", added);
+        }
+    }
 }
 
 void ZeroTagUi::rescan_library() {
@@ -633,6 +653,13 @@ void ZeroTagUi::tick() {
         dirty = true;
     }
 
+    if (online_phase_.load() == OnlinePhase::Done || online_phase_.load() == OnlinePhase::Failed) {
+        finish_online_update();
+        dirty = false; // finish_online_update() has rendered
+    } else if (online_phase_.load() == OnlinePhase::Running && screen_ == Screen::Settings) {
+        dirty = true; // the "downloading" dots
+    }
+
     if (screen_ == Screen::Scan) {
         // Scan: the worker runs on its own thread; the UI joins it and saves the backup when it is done.
         if (scan_phase_.load() == ScanPhase::Done) {
@@ -688,6 +715,94 @@ void ZeroTagUi::tick_cb(lv_timer_t* timer) {
     if (self) {
         self->tick();
     }
+}
+
+// ---------------------------------------------------------------------------
+// Online update of the catalogue (optional, off by default)
+// ---------------------------------------------------------------------------
+
+void ZeroTagUi::toggle_online() {
+    online_ = !online_;
+    if (persist_setting_) {
+        persist_setting_("online", online_ ? "yes" : "no");
+    }
+    platform::audio::play(platform::Sound::Blip);
+    render();
+}
+
+bool ZeroTagUi::is_upcoming(const amiibo::Entry& entry) {
+    if (entry.release.empty()) {
+        return false;
+    }
+    char today[16];
+    const std::time_t now = std::time(nullptr);
+    std::tm local{};
+    localtime_r(&now, &local);
+    std::strftime(today, sizeof(today), "%Y-%m-%d", &local);
+    return entry.release > today;
+}
+
+void ZeroTagUi::start_online_update() {
+    if (!online_) {
+        say(tr(Str::UpdateNeedsOn), true);
+        return;
+    }
+    if (online_thread_.joinable() || online_phase_.load() == OnlinePhase::Running) {
+        return;
+    }
+    online_cancel_ = false;
+    online_phase_ = OnlinePhase::Running;
+    online_thread_ = std::thread([this] {
+        std::error_code ec;
+        fs::create_directories(fs::path(online_path_).parent_path(), ec);
+        std::string error;
+        const bool ok = platform::download_amiibo_list(online_path_, online_cancel_, error);
+        {
+            std::lock_guard<std::mutex> lock(online_mutex_);
+            online_error_ = error;
+        }
+        online_phase_ = ok ? OnlinePhase::Done : OnlinePhase::Failed;
+    });
+    render();
+}
+
+void ZeroTagUi::stop_online_update() {
+    online_cancel_ = true;
+    if (online_thread_.joinable()) {
+        online_thread_.join();
+    }
+}
+
+void ZeroTagUi::finish_online_update() {
+    if (online_thread_.joinable()) {
+        online_thread_.join();
+    }
+    if (online_phase_.load() == OnlinePhase::Done) {
+        const size_t before = db_.entries().size();
+        reload_catalogue();
+        online_added_ = db_.entries().size() > before ? db_.entries().size() - before : 0;
+        say(online_added_ > 0 ? i18n::format(Str::UpdateDone, static_cast<int>(online_added_)) : std::string(tr(Str::UpdateUpToDate)),
+            false);
+        platform::audio::play(platform::Sound::Blip);
+    } else {
+        std::string error;
+        {
+            std::lock_guard<std::mutex> lock(online_mutex_);
+            error = online_error_;
+        }
+        say(i18n::format(Str::UpdateFailed, clip(error, 40).c_str()), true);
+        platform::audio::play(platform::Sound::Error);
+    }
+    online_phase_ = OnlinePhase::Idle;
+    render();
+}
+
+void ZeroTagUi::reload_catalogue() {
+    scan_entry_ = nullptr;
+    cat_sel_ = 0;
+    cat_top_ = 0;
+    load_catalogue();
+    rescan_library();
 }
 
 // ---------------------------------------------------------------------------
@@ -1100,7 +1215,7 @@ bool ZeroTagUi::on_key(uint32_t key, bool long_pressed) {
         if (key == LV_KEY_UP) {
             settings_sel_ = std::max(0, settings_sel_ - 1);
         } else if (key == LV_KEY_DOWN) {
-            settings_sel_ = std::min(7, settings_sel_ + 1);
+            settings_sel_ = std::min(9, settings_sel_ + 1);
         } else if (settings_sel_ == 0 && key == LV_KEY_LEFT) {
             cycle_language(-1);
             return true;
@@ -1109,6 +1224,9 @@ bool ZeroTagUi::on_key(uint32_t key, bool long_pressed) {
             return true;
         } else if (settings_sel_ == 2 && key == LV_KEY_LEFT) {
             toggle_sound();
+            return true;
+        } else if (settings_sel_ == 3 && key == LV_KEY_LEFT) {
+            toggle_online();
             return true;
         } else if (key == LV_KEY_RIGHT || key == LV_KEY_ENTER) {
             switch (settings_sel_) {
@@ -1122,20 +1240,26 @@ bool ZeroTagUi::on_key(uint32_t key, bool long_pressed) {
                 toggle_sound();
                 return true;
             case 3:
+                toggle_online();
+                return true;
+            case 4:
+                start_online_update();
+                return true;
+            case 5:
                 if (!platform::spi_available()) {
                     open_cap_setup(Screen::Settings);
                     return true;
                 }
                 check_hardware();
                 break;
-            case 4:
+            case 6:
                 keys_ok_ = keys_->load(keys_path_, keys_error_);
                 rescan_library();
                 break;
-            case 5:
+            case 7:
                 rescan_library();
                 break;
-            case 6:
+            case 8:
                 screen_before_help_ = Screen::Settings;
                 go(Screen::Help);
                 return true;
@@ -1612,7 +1736,7 @@ void ZeroTagUi::render_catalogue() {
         }
         const amiibo::Entry* e = entries[static_cast<size_t>(idx)];
         list_row(kListTop + row * kRowH, idx == cat_sel_, e, e->name, e->amiibo_series,
-                 owned(e) ? tr(Str::Owned) : "");
+                 owned(e) ? tr(Str::Owned) : (is_upcoming(*e) ? tr(Str::BadgeSoon) : (e->online ? tr(Str::BadgeNew) : "")));
     }
     scrollbar(entries.size(), first);
 
@@ -1873,6 +1997,22 @@ void ZeroTagUi::render_settings() {
     rows.push_back({tr(Str::SettingsRotation), tr(Str::HelpRotation),
                     std::string("< ") + tr(uid_rotation_ ? Str::ValueOn : Str::ValueOff) + " >", -1});
     rows.push_back({tr(Str::SettingsSound), "", std::string("< ") + tr(sound_ ? Str::ValueOn : Str::ValueOff) + " >", -1});
+    rows.push_back({tr(Str::SettingsOnline), tr(Str::OnlineHint),
+                    std::string("< ") + tr(online_ ? Str::ValueOn : Str::ValueOff) + " >", -1});
+    {
+        std::string detail = tr(Str::UpdateHint);
+        std::error_code ec;
+        if (online_phase_.load() == OnlinePhase::Running) {
+            detail = tr(Str::UpdateRunning);
+        } else if (!online_) {
+            detail = tr(Str::UpdateNeedsOn);
+        } else if (fs::is_regular_file(online_path_, ec)) {
+            std::size_t fresh = 0;
+            for (const auto& e : db_.entries()) fresh += e.online ? 1 : 0;
+            detail = i18n::format(Str::UpdateKnown, static_cast<int>(fresh));
+        }
+        rows.push_back({tr(Str::SettingsUpdate), detail, "", -1});
+    }
     rows.push_back({tr(Str::SetupCap), cap_status_.empty() ? std::string(tr(Str::SetupNotChecked)) : clip(cap_status_, 70),
                     "", cap_ok_ ? 0 : 2});
     rows.push_back({keys_ok_ ? tr(Str::SetupKeysOk) : tr(Str::NoteKeysTitle),

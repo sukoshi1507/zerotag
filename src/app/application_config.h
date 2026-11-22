@@ -15,6 +15,7 @@ struct ApplicationConfig {
     std::string language = "fr"; // fr, en, ja
     bool uid_rotation = false;   // new UID after each read session
     bool sound = true;           // jingles and the manual's music
+    bool online = false;         // optional download of the amiibo list (Settings > Online); off = fully offline
 };
 
 bool load_application_config(const std::string& path,

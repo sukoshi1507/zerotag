@@ -18,6 +18,12 @@ on a console, and keep what the game writes back.
   and again when you stop. Signatures stay valid.
 - **UID rotation** (optional): after each read the amiibo gets a new UID, re-signed with your keys, so a game
   sees a "different" figure every time. Data is kept.
+- **Search** in both lists: several words, accents and case ignored, names, series and the 16-digit id.
+- **Online update** (optional, off by default): Settings > Online, then "Check for new amiibo" downloads the public
+  [AmiiboAPI](https://www.amiiboapi.org) list with `curl` and shows figures missing from the bundled catalogue
+  marked `NEW`, or `SOON` before their release date. Only that public list is requested; nothing about you or the
+  device is sent. The answer is kept in `~/.zerotag/amiibo_online.json`; without the option the app never uses
+  the network.
 - Famicom-style interface in French, English and Japanese, with in-app help (`Fn+H`).
 
 ## What you need
@@ -74,7 +80,7 @@ Backups go in `~/amiibo` (override with `ZEROTAG_AMIIBO_DIR`; keys with `ZEROTAG
 
 The whole keyboard is supported, including the `Shift` capitals and the `Sym` layer (symbols) of the CardputerZero.
 
-Settings (`F1`) holds the language, UID rotation, and the status of the Cap, the keys and the folder.
+Settings (`F1`) holds the language, UID rotation, sound, the online update, and the status of the Cap, the keys and the folder.
 
 ## Build from source
 

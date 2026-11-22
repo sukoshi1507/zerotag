@@ -90,6 +90,38 @@ int main(int argc, char** argv) {
     check(db.search("").size() == db.entries().size() && !db.search("zelda smash").empty(),
           "plain search unchanged");
 
+    // Search by hex id and accent-insensitive search.
+    const amiibo::Entry* first = &db.entries().front();
+    const auto by_id = db.search(first->id);
+    check(by_id.size() == 1 && by_id[0] == first, "search by the 16-digit id finds that entry");
+    check(db.search("ZELDA").size() == db.search("zelda").size(), "search is case-insensitive");
+    check(db.search("z\xc3\xa9lda").size() == db.search("zelda").size(), "search ignores accents in the query");
+
+    // Online merge: a raw AmiiboAPI answer adds unknown entries (flagged online) and release dates.
+    const char* api_path = "/tmp/amiibo_db_test_api.json";
+    {
+        std::FILE* f = std::fopen(api_path, "w");
+        std::fprintf(f,
+                     "{\"amiibo\":[{\"amiiboSeries\":\"Test Series\",\"character\":\"Tester\",\"gameSeries\":\"Test\","
+                     "\"head\":\"0xfff00000\",\"tail\":\"0x00ff0002\",\"name\":\"Caf\xc3\xa9 Tester\",\"type\":\"Figure\","
+                     "\"release\":{\"au\":null,\"eu\":\"2999-01-02\",\"jp\":\"2999-01-01\",\"na\":null}},"
+                     "{\"amiiboSeries\":\"Super Smash Bros.\",\"character\":\"Zelda\",\"gameSeries\":\"x\","
+                     "\"head\":\"0x01010000\",\"tail\":\"0x000e0002\",\"name\":\"Zelda\",\"type\":\"Figure\","
+                     "\"release\":{\"na\":\"2014-11-21\"}}]}");
+        std::fclose(f);
+    }
+    const size_t before = db.entries().size();
+    std::string merge_error;
+    const size_t added = db.merge(api_path, merge_error);
+    check(added == 1 && db.entries().size() == before + 1, "merge adds only the unknown entry");
+    const amiibo::Entry* fresh = db.find(0xfff00000, 0x00ff0002);
+    check(fresh && fresh->online && fresh->release == "2999-01-02", "new entry is flagged online, latest release kept");
+    const amiibo::Entry* old = db.find(0x01010000, 0x000e0002);
+    check(old && !old->online && old->release == "2014-11-21", "known entry keeps its text, gains a release date");
+    check(db.search("cafe tester").size() == 1, "accents in the data are ignored too");
+    check(db.merge("/nonexistent/file.json", merge_error) == 0 && !merge_error.empty(), "missing file is an error");
+    std::remove(api_path);
+
     std::printf("%s\n", failures ? "FAILED" : "all passed");
     return failures ? 1 : 0;
 }

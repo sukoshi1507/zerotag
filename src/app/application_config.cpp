@@ -102,6 +102,12 @@ bool load_application_config(const std::string& path,
                 config.sound = v;
             }
         }
+        if (section == "application" && key == "online") {
+            bool v = false;
+            if (parse_bool(line.substr(separator + 1), v)) {
+                config.online = v;
+            }
+        }
         if (section == "application" && key == "language") {
             config.language = lowercase(trim(line.substr(separator + 1)));
         }

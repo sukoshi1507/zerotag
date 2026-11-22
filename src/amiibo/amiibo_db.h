@@ -18,6 +18,8 @@ struct Entry {
     std::string game_series;
     std::string amiibo_series;
     std::string type;
+    std::string release; // latest regional release date, "YYYY-MM-DD" ("" when unknown); only from the online list
+    bool online{false};  // not in the bundled catalogue: learnt from the online update
     uint32_t head{0};
     uint32_t tail{0};
 };
@@ -40,10 +42,14 @@ public:
     // Loads the catalogue. Entries with an invalid id are skipped.
     bool load(const std::string& path, std::string& error);
 
+    // Adds the entries of an AmiiboAPI answer (raw /api/amiibo/ JSON, or the same format as load()) that are not
+    // in the catalogue yet, flagged `online`, and fills in release dates. Returns how many entries were added.
+    size_t merge(const std::string& path, std::string& error);
+
     const std::vector<Entry>& entries() const { return entries_; }
     const Entry* find(uint32_t head, uint32_t tail) const;
 
-    // Case-insensitive substring search over name, character, game series and amiibo series.
+    // Case- and accent-insensitive substring search over name, character, game series, amiibo series and the hex id.
     // Every whitespace-separated word of `query` has to match. An empty query returns everything.
     std::vector<const Entry*> search(const std::string& query) const;
 

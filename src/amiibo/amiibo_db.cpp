@@ -11,6 +11,7 @@
 #include <fstream>
 #include <map>
 #include <sstream>
+#include <tuple>
 
 namespace amiibo {
 namespace {
@@ -169,6 +170,32 @@ private:
         return i_ > start;
     }
 
+    // Reads the regional release dates into object["release"] as the latest non-null date (ISO dates sort as text).
+    bool release_object(std::map<std::string, std::string>& object) {
+        if (!eat('{')) return false;
+        ws();
+        if (eat('}')) return true;
+        for (;;) {
+            std::string region;
+            ws();
+            if (!string(region)) return false;
+            ws();
+            if (!eat(':')) return false;
+            ws();
+            if (peek() == '"') {
+                std::string date;
+                if (!string(date)) return false;
+                std::string& latest = object["release"];
+                if (date > latest) latest = date;
+            } else if (!skip()) {
+                return false;
+            }
+            ws();
+            if (eat(',')) continue;
+            return eat('}');
+        }
+    }
+
     bool array_of_objects(std::vector<std::map<std::string, std::string>>& out) {
         if (!eat('[')) return false;
         ws();
@@ -190,6 +217,9 @@ private:
                         std::string value;
                         if (!string(value)) return false;
                         object[key] = value;
+                    } else if (key == "release" && peek() == '{') {
+                        // AmiiboAPI: "release": {"au": "2026-11-12" | null, "eu": ..., "jp": ..., "na": ...}
+                        if (!release_object(object)) return false;
                     } else if (!skip()) {
                         return false;
                     }
@@ -219,8 +249,10 @@ std::string field(const std::map<std::string, std::string>& m, const char* key) 
 
 } // namespace
 
-bool Database::load(const std::string& path, std::string& error) {
-    entries_.clear();
+namespace {
+
+bool read_objects(const std::string& path, std::vector<std::map<std::string, std::string>>& objects,
+                  std::string& error) {
     std::ifstream f(path, std::ios::binary);
     if (!f) {
         error = "cannot open " + path;
@@ -229,30 +261,80 @@ bool Database::load(const std::string& path, std::string& error) {
     std::stringstream buffer;
     buffer << f.rdbuf();
     const std::string text = buffer.str();
+    return Reader(text).parse(objects, error);
+}
 
+// The bundled catalogue has "id"; the raw AmiiboAPI answer has "head" and "tail" (both "0x..." strings).
+bool entry_from(const std::map<std::string, std::string>& o, Entry& e) {
+    e = Entry{};
+    e.id = lower(field(o, "id"));
+    if (e.id.empty()) {
+        std::string head = lower(field(o, "head"));
+        std::string tail = lower(field(o, "tail"));
+        if (head.rfind("0x", 0) == 0) head.erase(0, 2);
+        if (tail.rfind("0x", 0) == 0) tail.erase(0, 2);
+        e.id = head + tail;
+    }
+    if (!parse_id(e.id, e.head, e.tail)) {
+        return false;
+    }
+    e.name = field(o, "name");
+    e.character = field(o, "character");
+    e.game_series = field(o, "gameSeries");
+    e.amiibo_series = field(o, "amiiboSeries");
+    e.type = field(o, "type");
+    e.release = field(o, "release");
+    return true;
+}
+
+} // namespace
+
+bool Database::load(const std::string& path, std::string& error) {
+    entries_.clear();
     std::vector<std::map<std::string, std::string>> objects;
-    if (!Reader(text).parse(objects, error)) {
+    if (!read_objects(path, objects, error)) {
         return false;
     }
     entries_.reserve(objects.size());
     for (const auto& o : objects) {
         Entry e;
-        e.id = lower(field(o, "id"));
-        if (!parse_id(e.id, e.head, e.tail)) {
-            continue;
+        if (entry_from(o, e)) {
+            entries_.push_back(std::move(e));
         }
-        e.name = field(o, "name");
-        e.character = field(o, "character");
-        e.game_series = field(o, "gameSeries");
-        e.amiibo_series = field(o, "amiiboSeries");
-        e.type = field(o, "type");
-        entries_.push_back(std::move(e));
     }
     if (entries_.empty()) {
         error = "no amiibo entry found in " + path;
         return false;
     }
     return true;
+}
+
+size_t Database::merge(const std::string& path, std::string& error) {
+    std::vector<std::map<std::string, std::string>> objects;
+    if (!read_objects(path, objects, error)) {
+        return 0;
+    }
+    std::map<std::string, size_t> index;
+    for (size_t i = 0; i < entries_.size(); ++i) index[entries_[i].id] = i;
+    size_t added = 0;
+    for (const auto& o : objects) {
+        Entry e;
+        if (!entry_from(o, e)) continue;
+        const auto it = index.find(e.id);
+        if (it != index.end()) {
+            // Known entry: keep the bundled text, learn the release date.
+            if (entries_[it->second].release.empty()) entries_[it->second].release = e.release;
+            continue;
+        }
+        e.online = true;
+        index[e.id] = entries_.size();
+        entries_.push_back(std::move(e));
+        ++added;
+    }
+    std::sort(entries_.begin(), entries_.end(), [](const Entry& a, const Entry& b) {
+        return std::tie(a.amiibo_series, a.name, a.id) < std::tie(b.amiibo_series, b.name, b.id);
+    });
+    return added;
 }
 
 const Entry* Database::find(uint32_t head, uint32_t tail) const {
@@ -266,16 +348,38 @@ const Entry* Database::find(uint32_t head, uint32_t tail) const {
 
 namespace {
 
+// Lower-case and drop the accents of Latin-1 letters: "Pokémon" matches "pokemon" and the other way round.
+std::string fold(const std::string& in) {
+    static const char kMap[] = "aaaaaaaceeeeiiiidnooooo/ouuuuypy"; // U+00E0..U+00FF
+    std::string out;
+    out.reserve(in.size());
+    for (size_t i = 0; i < in.size(); ++i) {
+        const unsigned char c = static_cast<unsigned char>(in[i]);
+        if (c == 0xC3 && i + 1 < in.size()) {
+            unsigned char d = static_cast<unsigned char>(in[i + 1]);
+            if (d >= 0x80 && d <= 0x9F) d = static_cast<unsigned char>(d + 0x20); // upper case letters
+            if (d >= 0xA0) {
+                out += kMap[d - 0xA0];
+                ++i;
+                continue;
+            }
+        }
+        out += static_cast<char>(std::tolower(c));
+    }
+    return out;
+}
+
 std::vector<std::string> words_of(const std::string& query) {
     std::vector<std::string> words;
-    std::stringstream ss(lower(query));
+    std::stringstream ss(fold(query));
     std::string w;
     while (ss >> w) words.push_back(w);
     return words;
 }
 
 bool matches(const Entry& e, const std::vector<std::string>& words) {
-    const std::string haystack = lower(e.name + '\n' + e.character + '\n' + e.game_series + '\n' + e.amiibo_series);
+    const std::string haystack = fold(e.name + '\n' + e.character + '\n' + e.game_series + '\n' +
+                                      e.amiibo_series + '\n' + e.id);
     return std::all_of(words.begin(), words.end(), [&](const std::string& w) {
         return haystack.find(w) != std::string::npos;
     });

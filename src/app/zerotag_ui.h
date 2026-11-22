@@ -53,6 +53,7 @@ public:
     void start();
     void set_uid_rotation(bool enabled) { uid_rotation_ = enabled; }
     void set_sound(bool enabled);
+    void set_online(bool enabled) { online_ = enabled; }
 
     // Called by the platform key router. Returns true when the key was used.
     bool on_key(uint32_t key, bool long_pressed);
@@ -97,6 +98,15 @@ private:
     void toggle_sound();
     void open_cap_setup(Screen after);
     void submit_cap_setup();
+
+    // ---- optional online update of the catalogue (Settings > Online): curl worker, UI thread reloads
+    void toggle_online();
+    void start_online_update();
+    void stop_online_update();
+    void finish_online_update(); // UI thread: joins the worker, reloads the catalogue
+    void reload_catalogue();     // load_catalogue() + rescan the library
+    void load_catalogue();       // bundled catalogue + the downloaded online list, when present
+    static bool is_upcoming(const amiibo::Entry& entry);
 
     // ---- scan: reads a real NTAG215 into the library (F2 from the library)
     void start_scan_if_idle();
@@ -153,6 +163,15 @@ private:
     lv_obj_t* root_{nullptr};
     lv_timer_t* timer_{nullptr};
     bool sound_{true};
+    bool online_{false};
+    enum class OnlinePhase { Idle, Running, Done, Failed };
+    std::thread online_thread_;
+    std::atomic<bool> online_cancel_{false};
+    std::atomic<OnlinePhase> online_phase_{OnlinePhase::Idle};
+    std::mutex online_mutex_;
+    std::string online_error_; // under online_mutex_
+    size_t online_added_{0};
+    std::string online_path_;
 
     // ---- manual (demoscene screen): the animated objects are rebuilt with the page, moved by anim_timer_
     void manual_enter();
