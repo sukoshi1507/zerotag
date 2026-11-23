@@ -1,0 +1,14 @@
+[package]
+name = "zerotag-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "ZeroTag core: amiibo image crypto, catalogue and NFC driver (Rust port)"
+
+[dependencies]
+aes = "0.8"
+ctr = "0.9"
+hmac = "0.12"
+sha2 = "0.10"
+getrandom = "0.2"
+zeroize = "1"
