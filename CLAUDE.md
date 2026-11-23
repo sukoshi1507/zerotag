@@ -150,3 +150,19 @@ GPL code from pixl.js (reading it for ideas was already done once; prefer public
 - Wrong sudo password: cannot be observed on this account (sudoers NOPASSWD: ALL, sudo accepts any password; the code path
   PasswordRefused exists in cap_setup.cpp but needs an account without NOPASSWD). JA layout of the new screens checked by the user
   2026-11-22: OK.
+
+## Rust port (branch `rust-port`, started 2026-11-24, local only, nothing pushed)
+- Decided with the user: a Rust fork of the project in the same repo (workspace `rust/`), UI later with `embedded-graphics`
+  on the framebuffer (`fb_st7789v`, 320x170) instead of LVGL. The C++ app stays the published version until the port has
+  the same features. No GitHub repo created for it yet (ask first).
+- Toolchain: no rustup/cargo on this host; use `mise x rust@stable -- cargo ...` (user space, rust 1.100). Run from `rust/`.
+  aarch64 target not installed yet (`rustup target add` is not available through mise's plain install; check before cross build).
+- DONE in `rust/zerotag-core`: `amiibo::{Keys, generate, rotate_uid, verify, parse_id}` (RustCrypto: aes, ctr, hmac, sha2; replaces
+  mbedtls + vendored amiitool) and `amiibo::{Database, Entry, Facet}` (serde_json; load, merge online, accent-insensitive search, facets).
+  11 unit tests (`cargo test`, synthetic keys, plus the bundled 954-entry catalogue).
+- Crypto verified against the C++ build with the real key_retail.bin (read in place, never copied/printed): C++ gen -> Rust verify,
+  Rust gen -> C++ verify, Rust rotate_uid -> C++ verify, all valid. The C++ tools were built in the scratchpad against
+  /usr/lib/libmbedcrypto.so.3.6.7 and the headers in ../CardputerZeroApps/.cache/cp0-deps/mbedtls-src/include.
+  Rust examples: `cargo build --release --examples` gives amiibo_gen / amiibo_verify / amiibo_rotate (same CLI as tools/).
+- Next: library_state + config, platform (spidev/gpio ST25R3916 driver, emulation state machine, keyboard via evdev, audio,
+  online_update, cap_setup), then the embedded-graphics UI. The NFC parts can only be checked on the device (ask for its address).
