@@ -7,5 +7,6 @@ description = "ZeroTag user interface: software renderer for the 320x170 Famicom
 
 [dependencies]
 zerotag-core = { path = "../zerotag-core" }
-fontdue = "0.9"
+ab_glyph = "0.2"
+memmap2 = "0.9"
 png = "0.17"

@@ -191,12 +191,14 @@ GPL code from pixl.js (reading it for ideas was already done once; prefer public
   `screenshot` (PNG encoder for an RGBA buffer, ~/Pictures/Screenshots; the capture itself belongs to the UI layer). 54 host tests.
 - Audio confirmed audible on the device by the user (2026-11-24, after checking PipeWire routing: default sink = ES8389 card).
 - UI started 2026-11-24 in `rust/zerotag-ui` (software renderer, no toolkit): `Canvas` (0xRRGGBB, RGB565 export for the 640-byte-stride
-  fb0 of the panel), `Fonts` (fontdue + the SAME system Noto Sans CJK Regular/Medium the C++ app uses, so the look matches; the
+  fb0 of the panel), `Fonts` (ab_glyph + memmap2 over the SAME system Noto Sans CJK Regular/Medium the C++ app uses, so the look matches; fontdue was tried
+  first and got the process OOM-killed on the device (it parses all 65k outlines of the 19 MB .ttc; 352 MB RAM): never read these
+  fonts whole. Measured on the device: load 115 ms, first draw 60 ms; the
   pixel-font idea is postponed, the Famicom feel comes from the frame/cursor/colours), `widgets::Painter` (frame, bar, footer, search
   field, list rows, scrollbar, star/triforce/cursor with the C++ coordinates) and `screens::catalogue`. Dev loop without the device:
   `cargo run --release -p zerotag-ui --example render_catalogue -- ../assets/amiibo/amiibo_db.json zelda_ fr out.png`, then compare with
   screenshot/*.png (the catalogue render is within ~1 px of the C++ one). Not done yet: thumbnails, the other screens, framebuffer output,
-  the app loop. Concern to measure on the device: loading a Noto CJK .ttc with fontdue takes ~2 s per face on the host (release).
+  the app loop. Font start-up cost is solved (see above).
 - Simplified Chinese added (user request) to the Rust port only: `Lang::Zh` (code "zh"), strings in tools/i18n_zh_hans.tsv merged by
   tools/gen_i18n_rs.py into rust/zerotag-ui/src/i18n_strings.rs (regenerate with `python3 tools/gen_i18n_rs.py`; it fails when a string
   is missing or a placeholder differs). Font face 2 (SC) of the .ttc for zh, face 0 (JP) for fr/en/ja. The C++ app still has 3 languages.

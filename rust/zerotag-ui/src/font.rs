@@ -1,45 +1,70 @@
 // SPDX-License-Identifier: MIT
-//! Text rendering with the system Noto Sans CJK (Regular and Medium, like the C++ version): Latin, accents and
-//! Japanese from one family. Glyphs are rasterised by fontdue and cached.
+//! Text rendering with the system Noto Sans CJK (Regular and Medium, like the C++ version): Latin, accents, Japanese
+//! and Chinese from one family. The files are memory-mapped, glyphs are outlined on demand by ab_glyph and cached.
 
 use crate::canvas::{Canvas, Rgb};
 use crate::Lang;
-use fontdue::{Font, FontSettings, Metrics};
+use ab_glyph::{point, Font, FontRef, PxScale, ScaleFont};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
 
 const REGULAR: [&str; 2] =
     ["/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc"];
 const MEDIUM: [&str; 2] =
     ["/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc", "/usr/share/fonts/noto-cjk/NotoSansCJK-Medium.ttc"];
 
-type Glyph = (Metrics, Vec<u8>);
-
-pub struct Fonts {
-    regular: Font,
-    bold: Font,
-    face: u32,
-    cache: RefCell<HashMap<(char, u32, bool), Glyph>>,
-}
-
-fn load_one(paths: &[&str], face: u32) -> Result<Font, String> {
+/// The font files are mapped once and never unmapped (they live as long as the process). Only the pages that are
+/// touched become resident: a Noto CJK collection is ~19 MB and the device has 352 MB of RAM, so reading the whole
+/// file (or, like fontdue, parsing every outline up front) is not an option.
+fn map_font(paths: &[&str]) -> Result<&'static [u8], String> {
+    static MAPS: OnceLock<Mutex<HashMap<String, &'static [u8]>>> = OnceLock::new();
+    let mut maps = MAPS.get_or_init(Default::default).lock().unwrap();
     for p in paths {
-        if let Ok(data) = std::fs::read(p) {
-            // face in the collection: 0 = Japanese, 2 = Simplified Chinese (same Latin letters, different Han glyphs)
-            return Font::from_bytes(data, FontSettings { collection_index: face, ..Default::default() })
-                .map_err(|e| format!("{p}: {e}"));
+        if let Some(data) = maps.get(*p) {
+            return Ok(*data);
+        }
+        if let Ok(file) = std::fs::File::open(p) {
+            // SAFETY: read-only mapping of a system font file that is not modified while the app runs.
+            if let Ok(map) = unsafe { memmap2::Mmap::map(&file) } {
+                let data: &'static [u8] = Box::leak(Box::new(map));
+                maps.insert((*p).to_owned(), data);
+                return Ok(data);
+            }
         }
     }
     Err(format!("Noto Sans CJK not found (looked in {})", paths.join(", ")))
 }
 
+/// A rasterised glyph: offset of its bitmap from the pen position on the baseline, size, coverage.
+struct Glyph {
+    x: i32,
+    y: i32,
+    w: usize,
+    h: usize,
+    coverage: Vec<u8>,
+    advance: f32,
+}
+
+pub struct Fonts {
+    regular: FontRef<'static>,
+    bold: FontRef<'static>,
+    face: u32,
+    cache: RefCell<HashMap<(char, u32, bool), Glyph>>,
+}
+
+fn open_face(paths: &[&str], face: u32) -> Result<FontRef<'static>, String> {
+    // face in the collection: 0 = Japanese, 2 = Simplified Chinese (same Latin letters, different Han glyphs)
+    FontRef::try_from_slice_and_index(map_font(paths)?, face).map_err(|e| format!("{}: {e}", paths[0]))
+}
+
 impl Fonts {
-    /// Loads the fonts for `lang` (French and English use the Japanese face, whose Latin letters are the same).
+    /// Opens the fonts for `lang` (French and English use the Japanese face, whose Latin letters are the same).
     pub fn load(lang: Lang) -> Result<Self, String> {
         let face = lang.cjk_face();
         Ok(Self {
-            regular: load_one(&REGULAR, face)?,
-            bold: load_one(&MEDIUM, face)?,
+            regular: open_face(&REGULAR, face)?,
+            bold: open_face(&MEDIUM, face)?,
             face,
             cache: RefCell::new(HashMap::new()),
         })
@@ -50,7 +75,7 @@ impl Fonts {
         self.face == lang.cjk_face()
     }
 
-    fn font(&self, bold: bool) -> &Font {
+    fn font(&self, bold: bool) -> &FontRef<'static> {
         if bold {
             &self.bold
         } else {
@@ -58,23 +83,50 @@ impl Fonts {
         }
     }
 
+    /// ab_glyph scales by the height of the font box (ascent - descent); an em-based size like FreeType's pixel size
+    /// needs the conversion through the units per em.
+    fn scale(&self, px: u32, bold: bool) -> PxScale {
+        let f = self.font(bold);
+        PxScale::from(px as f32 * f.height_unscaled() / f.units_per_em().unwrap_or(1000.0))
+    }
+
     fn ascent(&self, px: u32, bold: bool) -> i32 {
-        self.font(bold).horizontal_line_metrics(px as f32).map_or(px as i32, |m| m.ascent.round() as i32)
+        self.font(bold).as_scaled(self.scale(px, bold)).ascent().round() as i32
     }
 
     /// Height of one line (ascent + descent), as LVGL's lv_font_get_line_height.
     pub fn line_height(&self, px: u32, bold: bool) -> i32 {
-        self.font(bold).horizontal_line_metrics(px as f32).map_or(px as i32, |m| (m.ascent - m.descent).round() as i32)
+        self.font(bold).as_scaled(self.scale(px, bold)).height().round() as i32
     }
 
     fn glyph<R>(&self, c: char, px: u32, bold: bool, f: impl FnOnce(&Glyph) -> R) -> R {
         let mut cache = self.cache.borrow_mut();
-        let g = cache.entry((c, px, bold)).or_insert_with(|| self.font(bold).rasterize(c, px as f32));
+        let g = cache.entry((c, px, bold)).or_insert_with(|| {
+            let font = self.font(bold);
+            let scale = self.scale(px, bold);
+            let id = font.glyph_id(c);
+            let advance = font.as_scaled(scale).h_advance(id);
+            let mut g = Glyph { x: 0, y: 0, w: 0, h: 0, coverage: Vec::new(), advance };
+            if let Some(og) = font.outline_glyph(id.with_scale_and_position(scale, point(0.0, 0.0))) {
+                let b = og.px_bounds();
+                g.x = b.min.x.floor() as i32;
+                g.y = b.min.y.floor() as i32;
+                g.w = (b.max.x.ceil() - b.min.x.floor()) as usize;
+                g.h = (b.max.y.ceil() - b.min.y.floor()) as usize;
+                g.coverage = vec![0; g.w * g.h];
+                og.draw(|x, y, cov| {
+                    if (x as usize) < g.w && (y as usize) < g.h {
+                        g.coverage[y as usize * g.w + x as usize] = (cov * 255.0).round() as u8;
+                    }
+                });
+            }
+            g
+        });
         f(g)
     }
 
     fn advance(&self, c: char, px: u32, bold: bool) -> f32 {
-        self.glyph(c, px, bold, |g| g.0.advance_width)
+        self.glyph(c, px, bold, |g| g.advance)
     }
 
     pub fn width(&self, text: &str, px: u32, bold: bool) -> i32 {
@@ -86,15 +138,15 @@ impl Fonts {
         let baseline = y + self.ascent(px, bold);
         let mut pen = x as f32;
         for c in text.chars() {
-            let adv = self.glyph(c, px, bold, |(m, bitmap)| {
-                let gx = pen.round() as i32 + m.xmin;
-                let gy = baseline - m.ymin - m.height as i32;
-                for row in 0..m.height {
-                    for col in 0..m.width {
-                        canvas.blend(gx + col as i32, gy + row as i32, color, bitmap[row * m.width + col]);
+            let adv = self.glyph(c, px, bold, |g| {
+                let gx = pen.round() as i32 + g.x;
+                let gy = baseline + g.y;
+                for row in 0..g.h {
+                    for col in 0..g.w {
+                        canvas.blend(gx + col as i32, gy + row as i32, color, g.coverage[row * g.w + col]);
                     }
                 }
-                m.advance_width
+                g.advance
             });
             pen += adv;
         }
@@ -207,8 +259,8 @@ mod tests {
         assert!(ja.serves(Lang::Fr) && ja.serves(Lang::Ja) && !ja.serves(Lang::Zh));
         assert!(zh.serves(Lang::Zh) && !zh.serves(Lang::En));
         // 直 / 骨 are drawn differently in the two faces: the same character must not rasterise identically
-        let a = ja.glyph('直', 20, false, |g| g.1.clone());
-        let b = zh.glyph('直', 20, false, |g| g.1.clone());
+        let a = ja.glyph('直', 20, false, |g| g.coverage.clone());
+        let b = zh.glyph('直', 20, false, |g| g.coverage.clone());
         assert_ne!(a, b);
     }
 }
