@@ -9,6 +9,8 @@ use crate::{Str, SCREEN_W};
 /// What the list needs to know about one catalogue entry.
 #[derive(Debug, Clone, Default)]
 pub struct CatalogueRow {
+    /// 16 hex characters (the thumbnail file name).
+    pub id: String,
     pub name: String,
     pub amiibo_series: String,
     pub owned: bool,
@@ -63,14 +65,14 @@ pub fn render(p: &mut Painter, v: &CatalogueView) {
         } else {
             ""
         };
-        p.list_row(LIST_TOP + row as i32 * ROW_H, idx == v.selected, &e.name, &e.amiibo_series, badge, false);
+        p.list_row(LIST_TOP + row as i32 * ROW_H, idx == v.selected, &e.id, &e.name, &e.amiibo_series, badge, false);
     }
     p.scrollbar(v.rows.len(), first as i32);
 
     if let Some(e) = v.rows.get(v.selected) {
         let px = LIST_W + 8;
         p.canvas.bordered(px, 26, 36, 62, SURFACE, 2, CREAM);
-        p.thumb_holder(px + 2 + 2, 30, 54);
+        p.thumb(&e.id, px + 2 + 2, 30, 54);
         let name_w = SCREEN_W - px - 42 - 8;
         p.paragraph(&e.name, 11, true, TEXT, px + 42, 26, name_w);
         let tw = SCREEN_W - px - 8;

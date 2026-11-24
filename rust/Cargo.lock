@@ -837,6 +837,7 @@ dependencies = [
  "ab_glyph",
  "memmap2",
  "png",
+ "tempfile",
  "zerotag-core",
 ]
 

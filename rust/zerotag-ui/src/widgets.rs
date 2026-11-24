@@ -3,6 +3,7 @@
 
 use crate::canvas::{Canvas, Rgb};
 use crate::font::Fonts;
+use crate::thumbs::Thumbnails;
 use crate::style::*;
 use crate::{SCREEN_H, SCREEN_W};
 
@@ -10,6 +11,8 @@ use crate::{SCREEN_H, SCREEN_W};
 pub struct Painter<'a> {
     pub canvas: &'a mut Canvas,
     pub fonts: &'a Fonts,
+    /// Amiibo pictures; `None` draws the empty holders only.
+    pub thumbs: Option<&'a Thumbnails>,
 }
 
 impl Painter<'_> {
@@ -153,21 +156,43 @@ impl Painter<'_> {
         self.rect(LIST_W - 6, bar_y, 2, bar_h, BORDER);
     }
 
-    /// Placeholder thumbnail holder (surface colour, rounded); the picture is drawn over it when available.
-    pub fn thumb_holder(&mut self, x: i32, y: i32, h: i32) -> (i32, i32) {
+    /// A bordered box with its text centred (the signature / UID-rotation chips of the detail screen).
+    #[allow(clippy::too_many_arguments)]
+    pub fn chip(&mut self, x: i32, y: i32, w: i32, h: i32, label: &str, px: u32, bold: bool, color: Rgb, border: Rgb) {
+        self.canvas.bordered(x, y, w, h, BUTTON, 2, border);
+        let clipped = self.fonts.clip(label, px, bold, w - 8);
+        self.text_centered(&clipped, px, bold, color, x + 2, y + 2, w - 4, h - 4);
+    }
+
+    /// A 20 px high button with a centred label.
+    #[allow(clippy::too_many_arguments)]
+    pub fn button(&mut self, x: i32, y: i32, w: i32, label: &str, fill: Rgb, border: Rgb, color: Rgb, bold: bool) {
+        self.canvas.bordered(x, y, w, 20, fill, 2, border);
+        self.text_centered(label, 10, bold, color, x + 2, y + 2, w - 4, 16);
+    }
+
+    /// Thumbnail holder (surface colour, rounded) with the picture of amiibo `id` when it is available. Like the C++
+    /// version the picture is scaled to `h` pixels high, drawn from the top-left corner and cut to the holder width.
+    pub fn thumb(&mut self, id: &str, x: i32, y: i32, h: i32) {
         let w = 8.max(h * 51 / 88);
         self.canvas.fill_rounded(x, y, w, h, SURFACE);
-        (w, h)
+        let Some(sprite) = self.thumbs.filter(|_| !id.is_empty()).and_then(|t| t.get(id, h)) else { return };
+        for sy in 0..sprite.h.min(h as usize) {
+            for sx in 0..sprite.w.min(w as usize) {
+                let px = &sprite.rgba[(sy * sprite.w + sx) * 4..][..4];
+                self.canvas.blend(x + sx as i32, y + sy as i32, (px[0] as u32) << 16 | (px[1] as u32) << 8 | px[2] as u32, px[3]);
+            }
+        }
     }
 
     /// One row of the catalogue / library list.
     #[allow(clippy::too_many_arguments)]
-    pub fn list_row(&mut self, y: i32, selected: bool, name: &str, sub: &str, badge: &str, favorite: bool) {
+    pub fn list_row(&mut self, y: i32, selected: bool, id: &str, name: &str, sub: &str, badge: &str, favorite: bool) {
         if selected {
             self.rect(INSET + 1, y, LIST_W - INSET - 3, ROW_H - 2, SELECTED_ROW);
             self.cursor(INSET + 4, y + 8);
         }
-        self.thumb_holder(20, y + 2, 20);
+        self.thumb(id, 20, y + 2, 20);
         let tw = LIST_W - 36 - if badge.is_empty() { if favorite { 20 } else { 8 } } else { 50 };
         self.text(name, 11, selected, TEXT, 36, y + 2, Some(tw));
         self.text(sub, 9, false, DIM, 36, y + 14, Some(LIST_W - 44));
@@ -177,5 +202,27 @@ impl Painter<'_> {
         if favorite {
             self.pixel_star(LIST_W - 16, y + 4, PRIMARY);
         }
+    }
+}
+
+/// Cuts `s` to `n` characters, ending with "..." (the C++ `clip` helper, used for file names and ids).
+pub fn clip_chars(s: &str, n: usize) -> String {
+    if s.chars().count() <= n {
+        s.to_owned()
+    } else {
+        s.chars().take(n.saturating_sub(1)).collect::<String>() + "..."
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::clip_chars;
+
+    #[test]
+    fn clip_chars_matches_the_cpp_helper() {
+        assert_eq!(clip_chars("short", 30), "short");
+        assert_eq!(clip_chars("Link_AABBCCDD.bin", 8), "Link_AA...");
+        assert_eq!(clip_chars("日本語のファイル", 4), "日本語...");
+        assert_eq!(clip_chars("", 5), "");
     }
 }

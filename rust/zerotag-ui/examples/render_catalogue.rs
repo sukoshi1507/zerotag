@@ -3,6 +3,7 @@
 use zerotag_core::amiibo::Database;
 use zerotag_ui::screens::catalogue::{render, CatalogueRow, CatalogueView};
 use zerotag_ui::widgets::Painter;
+use zerotag_ui::thumbs::Thumbnails;
 use zerotag_ui::{Canvas, Fonts, Lang, SCREEN_H, SCREEN_W};
 
 fn main() {
@@ -14,6 +15,7 @@ fn main() {
     let rows: Vec<CatalogueRow> = hits
         .iter()
         .map(|e| CatalogueRow {
+            id: e.id.clone(),
             name: e.name.clone(),
             amiibo_series: e.amiibo_series.clone(),
             owned: e.name == "Bokoblin",
@@ -36,7 +38,8 @@ fn main() {
         banner: None,
         battery: Some((83, false)),
     };
-    render(&mut Painter { canvas: &mut canvas, fonts: &fonts }, &view);
+    let thumbs = Thumbnails::new(vec![std::path::Path::new(&a[1]).join("../images")]);
+    render(&mut Painter { canvas: &mut canvas, fonts: &fonts, thumbs: Some(&thumbs) }, &view);
     zerotag_core::screenshot::write_png(std::path::Path::new(&a[4]), &canvas.to_rgba(), SCREEN_W as u32, SCREEN_H as u32)
         .expect("png");
 }

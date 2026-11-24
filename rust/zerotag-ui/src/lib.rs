@@ -8,6 +8,7 @@ pub mod i18n;
 mod i18n_strings;
 pub mod screens;
 pub mod style;
+pub mod thumbs;
 pub mod widgets;
 
 pub use canvas::{Canvas, Rgb};
