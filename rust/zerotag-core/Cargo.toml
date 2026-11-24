@@ -15,3 +15,6 @@ zeroize = "1"
 serde_json = "1"
 spidev = "0.7"
 gpiocdev = "0.7"
+
+[dev-dependencies]
+tempfile = "3"

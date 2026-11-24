@@ -5,7 +5,11 @@
 mod crypto;
 mod db;
 mod image;
+mod library;
+mod state;
 
 pub use crypto::{Keys, KEYS_FILE_SIZE};
 pub use db::{Database, Entry, Facet, FacetCount};
+pub use library::{read_image, write_image, Item, Library};
+pub use state::{LibraryState, RECENT_MAX};
 pub use image::{generate, parse_id, rotate_uid, verify, Error, TagImage, NTAG215_SIZE};
