@@ -1,11 +1,11 @@
 {
   "app_name": "ZeroTag",
   "package_name": "zerotag",
-  "version": "0.5.0",
+  "version": "1.0.0",
   "description": "Amiibo emulator for CardputerZero with the Cap CC1101 (ST25R3916 NFC)",
   "store": {
     "summary": "Amiibo library and emulator for the CardputerZero with the NFC Cap",
-    "description": "ZeroTag turns the CardputerZero and its Cap CC1101 (ST25R3916) into an amiibo library and emulator.\n\n- Library of your own 540-byte backups (put them in ~/amiibo), recognised automatically, with signature check.\n- Catalogue of 954 characters: create blank, correctly signed amiibo.\n- NTAG215 emulation, verified with a Flipper Zero and a Nintendo Switch 2. What the game writes is saved to the file (autosave), signatures stay valid.\n- Optional UID rotation after each read, keeping the data.\n- Text search (names, series, ids; accents ignored), favourites, recent list and a scan of your real figures.\n- Optional online update (off by default): Settings > Online downloads the public amiiboapi.org list so newly announced amiibo appear marked NEW or SOON. Nothing about you or the device is sent.\n- Famicom-style interface in French, English and Japanese, with in-app help (Fn+H).\n\nSetup: copy your own key_retail.bin to ~/.zerotag/. After each boot the app offers to enable the Cap (it loads the SPI overlay with sudo: type your password on the keyboard, it is never stored); you can also run sudo /usr/lib/zerotag/cap-setup yourself. The app works fully offline. Amiibo thumbnails (artwork owned by Nintendo, from AmiiboAPI) are included for display only; your key_retail.bin is not.",
+    "description": "ZeroTag turns the CardputerZero and its Cap CC1101 (ST25R3916) into an amiibo library and emulator.\n\n- Library of your own 540-byte backups (put them in ~/amiibo), recognised automatically, with signature check.\n- Catalogue of 954 characters: create blank, correctly signed amiibo.\n- NTAG215 emulation, verified with a Flipper Zero and a Nintendo Switch 2. What the game writes is saved to the file (autosave), signatures stay valid.\n- Optional UID rotation after each read, keeping the data.\n- Text search (names, series, ids; accents ignored), favourites, recent list and a scan of your real figures.\n- Optional online update (off by default): Settings > Online downloads the public amiiboapi.org list so newly announced amiibo appear marked NEW or SOON. Nothing about you or the device is sent.\n- Famicom-style interface in French, English, Japanese and Simplified Chinese, with in-app help (Fn+H).\n\nSetup: copy your own key_retail.bin to ~/.zerotag/. After each boot the app offers to enable the Cap (it loads the SPI overlay with sudo: type your password on the keyboard, it is never stored); you can also run sudo /usr/lib/zerotag/cap-setup yourself. The app works fully offline. Amiibo thumbnails (artwork owned by Nintendo, from AmiiboAPI) are included for display only; your key_retail.bin is not.\n\nVersion 1.0 is a complete rewrite in Rust: statically linked, light on CPU and memory, with a demoscene manual in the settings.",
     "categories": [
       "Emulators",
       "Hardware & IoT"
@@ -43,6 +43,10 @@
       "ja": {
         "title": "ZeroTag",
         "summary": "CardputerZero用amiiboライブラリ＆エミュレーター(NFC Cap対応)"
+      },
+      "zh-CN": {
+        "title": "ZeroTag",
+        "summary": "CardputerZero 的 amiibo 资料库与模拟器（配合 NFC Cap）"
       }
     }
   },

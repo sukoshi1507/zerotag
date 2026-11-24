@@ -264,6 +264,14 @@ GPL code from pixl.js (reading it for ideas was already done once; prefer public
   `zerotag`, 0.6.0-rev1 > 0.5.0-rev1, so it upgrades the C++ one. NOT yet installed with dpkg on the device (the device still has the
   hand-copied binary + zerotag.cpp.bak); app-builder.json still says 0.5.0 and the store text is unchanged: a store release of the Rust
   version is the user's decision. Switch emulation verified by the user with the Rust build.
+- 2026-11-24 DECISIONS by the user: the Rust version is the final one and becomes 1.0.0 (workspace + app-builder.json version 1.0.0, zh-CN store
+  locale, store text mentions Simplified Chinese and the Rust rewrite); history of `rust-port` rewritten to drop the device address
+  (filter-branch + force-with-lease, local backup branch backup/rust-port-before-rewrite, not pushed; old SHAs may linger on GitHub a while);
+  ZeroTag_1.0.0_rev1_arm64.deb (800 KB) installed on the device with dpkg over 0.5.0-rev1 (dpkg -V clean; /usr/bin/zerotag.cpp.bak left in
+  place, remove it once the user is happy). The upgrade deleted the thumbnails the old private 0.5.0 package shipped in
+  /usr/share/zerotag/amiibo/images (the public package has none by design): restored by copying assets/amiibo/images to ~/.zerotag/images
+  on the device (the app reads that folder). The C++ sources stay in the repo (CMake still says 0.5.0): decide later whether to move them to
+  a `legacy/` folder. Store publication of 1.0.0 (GitHub release v1.0.0 with the .deb + `czdev publish`, see "Store submission") is NOT done yet.
 - Next: the
   embedded-graphics UI (old line kept below for reference): library_state + config, platform (spidev/gpio ST25R3916 driver, emulation state machine, keyboard via evdev, audio,
   online_update, cap_setup), then the embedded-graphics UI. The NFC parts can only be checked on the device (ask for its address).
