@@ -5,6 +5,25 @@ CardputerZero application template (MIT). Inspired by pixl.js (GPL-2.0) but **no
 the project stays MIT, written from the public format, amiitool (MIT) and M5Unit-NFC (MIT). Do not paste
 GPL code from pixl.js (reading it for ideas was already done once; prefer public specs).
 
+## Status 2026-11-24 (end of day) - READ THIS FIRST
+- ZeroTag 1.0.0 is the RUST version and it is PUBLISHED: `main` = 5427ac6 (rust-port merged fast-forward), GitHub release v1.0.0 with
+  ZeroTag_1.0.0_rev1_arm64.deb (14 MB, 954 amiibo thumbnails included by the user's decision: "free photos"), store PR
+  CardputerZero/packages#785 merged automatically (CI passed). The Rust code is in `rust/` (3 crates: zerotag-core, zerotag-ui, zerotag-app);
+  the old C++ app (src/, CMakeLists.txt, cmake/) stays in the repo for reference, CMake still says 0.5.0, nobody builds it any more.
+- Everything below this section that talks about LVGL/C++ describes the legacy app; the long "Rust port" section further down has the
+  details and the lessons (fb refresh vs SPI bus, fontdue OOM, rotation delay, scan, manual...).
+- Day-to-day: `cd rust && mise x rust@stable -- cargo test --release` (no rust on the host otherwise); package:
+  `mise x rust@stable -- packaging/build-rust-deb.sh [--with-images]` (run from rust/ or anywhere; output dist/ZeroTag_<v>_rev1_arm64.deb;
+  WITH images for the store, the user wants them in); publish a new version: bump `version` in rust/Cargo.toml AND app-builder.json, build the
+  .deb with --with-images, merge to main + push, `gh release create vX.Y.Z <deb> --target main`, `gh repo sync sukoshi1507/packages`, then
+  `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=url.https://github.com/.insteadOf GIT_CONFIG_VALUE_0=git@github.com: ~/AppBuilder/czdev publish --deb X.deb`
+  from the repo root (updates of an existing package merge automatically within ~1 minute).
+- Device (ask the user for the address): dpkg has zerotag 1.0.0-rev1 (the same .deb, minus the images in /usr/share: they live in
+  ~/.zerotag/images on the device), `/usr/bin/zerotag.cpp.bak` is a leftover C++ binary to delete when the user agrees.
+- Verified on hardware with the Rust version: Flipper Zero (full NTAG215 read), Nintendo Switch (the user said "test switch ok"), real scan of
+  a Bokoblin, help, online update, manual+music, keyboard. Not tested: iOS, 3DS/Wii U.
+- Git hygiene: never put the device address in committed files (history of rust-port was rewritten once to remove it).
+
 ## State
 - Template renamed to pixljszero, then to ZeroTag (ids `zerotag`); framebuffer found via /proc/fb (`fb_st7789v`), not /dev/fb0.
 - `src/platform/st25r3916.*`: Cap power-on, SPI, init, NFC-A reader (REQA/WUPA, anticollision, select),
