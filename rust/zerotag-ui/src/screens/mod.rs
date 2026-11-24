@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+pub mod cap_setup;
 pub mod catalogue;
 pub mod detail;
 pub mod emulation;

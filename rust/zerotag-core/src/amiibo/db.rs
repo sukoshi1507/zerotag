@@ -182,8 +182,13 @@ impl Database {
     /// Case- and accent-insensitive substring search over name, character, game series, amiibo series and the
     /// hex id. Every whitespace-separated word of `query` has to match. An empty query returns everything.
     pub fn search(&self, query: &str) -> Vec<&Entry> {
+        self.search_indices(query).into_iter().map(|i| &self.entries[i]).collect()
+    }
+
+    /// Same as `search`, as indices into `entries()`.
+    pub fn search_indices(&self, query: &str) -> Vec<usize> {
         let words = words_of(query);
-        self.entries.iter().filter(|e| matches(e, &words)).collect()
+        (0..self.entries.len()).filter(|&i| matches(&self.entries[i], &words)).collect()
     }
 
     /// Distinct non-empty values of `facet`, sorted case-insensitively, with their entry counts.
@@ -203,12 +208,19 @@ impl Database {
 
     /// Entries whose `facet` equals `value` (case-insensitive, exact) and that match `query` as `search` does.
     pub fn search_in(&self, facet: Facet, value: &str, query: &str) -> Vec<&Entry> {
+        self.search_in_indices(facet, value, query).into_iter().map(|i| &self.entries[i]).collect()
+    }
+
+    /// Same as `search_in`, as indices into `entries()`.
+    pub fn search_in_indices(&self, facet: Facet, value: &str, query: &str) -> Vec<usize> {
         let wanted = lower(value);
         if wanted.is_empty() {
             return Vec::new();
         }
         let words = words_of(query);
-        self.entries.iter().filter(|e| lower(facet_value(e, facet)) == wanted && matches(e, &words)).collect()
+        (0..self.entries.len())
+            .filter(|&i| lower(facet_value(&self.entries[i], facet)) == wanted && matches(&self.entries[i], &words))
+            .collect()
     }
 
     /// `<images_dir>/<id>.png`
@@ -249,6 +261,15 @@ mod tests {
         assert_eq!(d.search("").len(), 3);
         assert_eq!(d.search("zelda link").len(), 1);
         assert_eq!(d.search("01010000000e").len(), 1); // hex id
+    }
+
+    #[test]
+    fn index_searches_agree_with_the_reference_searches() {
+        let d = db();
+        let idx = d.search_indices("pokemon");
+        assert_eq!(idx.iter().map(|&i| &d.entries()[i]).collect::<Vec<_>>(), d.search("pokemon"));
+        assert_eq!(d.search_in_indices(Facet::Type, "card", "").len(), 2);
+        assert!(d.search_in_indices(Facet::Type, "", "").is_empty());
     }
 
     #[test]

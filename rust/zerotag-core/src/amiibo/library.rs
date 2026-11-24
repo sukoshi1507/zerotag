@@ -87,6 +87,11 @@ impl Library {
         &self.dir
     }
 
+    /// An empty library for `dir` (not scanned, maybe not created yet): `create` makes the folder on first use.
+    pub fn new(dir: impl AsRef<Path>) -> Self {
+        Self { dir: dir.as_ref().to_owned(), items: Vec::new() }
+    }
+
     /// Scans `dir` (not recursive) for *.bin files of 540 bytes.
     pub fn scan(dir: impl AsRef<Path>, db: &Database, keys: Option<&Keys>) -> Result<Self, String> {
         let dir = dir.as_ref();
@@ -129,8 +134,15 @@ impl Library {
 
     /// Case-insensitive search over the catalogue fields of the identified items.
     pub fn search<'a>(&'a self, db: &Database, query: &str) -> Vec<&'a Item> {
+        self.search_indices(db, query).into_iter().map(|i| &self.items[i]).collect()
+    }
+
+    /// Same as `search`, as indices into `items()`.
+    pub fn search_indices(&self, db: &Database, query: &str) -> Vec<usize> {
         let hits: Vec<&str> = db.search(query).iter().map(|e| e.id.as_str()).collect();
-        self.items.iter().filter(|i| i.entry.as_ref().is_some_and(|e| hits.contains(&e.id.as_str()))).collect()
+        (0..self.items.len())
+            .filter(|&i| self.items[i].entry.as_ref().is_some_and(|e| hits.contains(&e.id.as_str())))
+            .collect()
     }
 
     /// Generates a blank signed image for `entry`, stores it in the folder and returns its path.
@@ -227,7 +239,15 @@ mod tests {
     }
 
     #[test]
-    fn scan_of_a_missing_folder_is_an_error() {
+    fn scan_of_a_missing_folder_is_an_error_but_create_makes_the_folder() {
         assert!(Library::scan("/nonexistent/zerotag", &db(), None).is_err());
+        let d = tempfile::tempdir().unwrap();
+        let dir = d.path().join("not/yet/there");
+        let (keys, db) = (fake_keys(), db());
+        let mut lib = Library::new(&dir);
+        assert!(lib.items().is_empty() && lib.dir() == dir);
+        let p = lib.create(&keys, db.find(0x01010000, 0x000e0002).unwrap()).unwrap();
+        assert!(p.starts_with(&dir) && p.exists());
+        assert_eq!(Library::scan(&dir, &db, Some(&keys)).unwrap().items().len(), 1);
     }
 }
