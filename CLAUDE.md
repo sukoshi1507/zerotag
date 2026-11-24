@@ -231,6 +231,13 @@ GPL code from pixl.js (reading it for ideas was already done once; prefer public
   real Young_Link backup. The C++ app (still on the device as .cpp.bak) has the old rotation rule; port the delay to C++ if it is kept.
   Careful: the emulation test runs rotated and autosaved the user's ~/amiibo/Young_Link_DDFA7E09.bin several times (new UID, still validly
   signed, same data): harmless but the file's UID is no longer the original one.
+- ROOT CAUSE of the Flipper failures (found 2026-11-24, measured): the SCREEN REFRESH. The panel (fb0, panel-mipi-dbid) is on a SPI bus the
+  Cap shares; a full 150 KB frame written at every counter change held the bus, the chip's answers came too late and the Flipper gave up:
+  sessions of 4-5 reads instead of ~137 (a full NTAG215 read). The example tool (no display) and the C++ app (LVGL partial refresh, 250 ms
+  tick) did not have the problem. Fixes in the Rust app: `Framebuffer::present` writes only the changed rows (`changed_row_runs`), and
+  `App::can_flush` keeps the display quiet while a reader field is present or was seen < 600 ms ago (the frame is drawn once it left).
+  After the fix: 137 reads per session on the device. Lesson: never push frames to the display during an emulation session.
+  (The UID rotation change above was a real defect too but not the main one.)
 - Next: the
   embedded-graphics UI (old line kept below for reference): library_state + config, platform (spidev/gpio ST25R3916 driver, emulation state machine, keyboard via evdev, audio,
   online_update, cap_setup), then the embedded-graphics UI. The NFC parts can only be checked on the device (ask for its address).

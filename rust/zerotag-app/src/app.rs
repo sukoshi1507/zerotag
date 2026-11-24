@@ -32,6 +32,7 @@ const BANNER: Duration = Duration::from_millis(4000);
 const AUTOSAVE_QUIET: Duration = Duration::from_millis(1500);
 const FACETS: [Facet; 3] = [Facet::AmiiboSeries, Facet::Game, Facet::Type];
 const SETTINGS_ROWS: usize = 7;
+const DISPLAY_QUIET: Duration = Duration::from_millis(600);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Screen {
@@ -171,6 +172,8 @@ pub struct App<H: Hardware> {
     banner: Option<(String, bool, Instant)>,
     battery: Option<(i32, bool)>,
     battery_read: Option<Instant>,
+    /// When a reader field was last present during an emulation (the display stays quiet around it).
+    last_field: Option<Instant>,
     esc_down: bool,
     esc_handled: bool,
     pub want_quit: bool,
@@ -227,6 +230,7 @@ impl<H: Hardware> App<H> {
             banner: None,
             battery: None,
             battery_read: None,
+            last_field: None,
             esc_down: false,
             esc_handled: false,
             want_quit: false,
@@ -928,6 +932,9 @@ impl<H: Hardware> App<H> {
             return;
         }
         let st = self.hw.stats();
+        if st.field {
+            self.last_field = Some(now);
+        }
         let key = ((st.reads as u64) << 8)
             ^ ((st.writes as u64) << 4)
             ^ if st.field { 2 } else { 0 }
@@ -981,6 +988,20 @@ impl<H: Hardware> App<H> {
     /// Live emulation counters (for `--emulate`, printed from the main thread so the chip's thread is never slowed).
     pub fn emulation_stats(&self) -> crate::hw::LiveStats {
         self.hw.stats()
+    }
+
+    /// False while a reader is talking to the emulated tag (or just was): the panel and the NFC Cap are on the same SPI
+    /// bus, so a screen refresh at that moment delays the chip's answers and the reader gives up. The frame is drawn
+    /// as soon as the reader has been gone for `DISPLAY_QUIET`.
+    pub fn can_flush(&self, now: Instant) -> bool {
+        if self.screen != Screen::Emulating || !self.hw.emulation_running() {
+            return true;
+        }
+        !self.hw.stats().field && self.last_field.is_none_or(|t| now.duration_since(t) >= DISPLAY_QUIET)
+    }
+
+    pub fn mark_dirty(&mut self) {
+        self.dirty = true;
     }
 
     pub fn take_dirty(&mut self) -> bool {
@@ -1633,6 +1654,21 @@ mod tests {
                 e.app.render(&mut canvas);
             }
         }
+    }
+
+    #[test]
+    fn the_screen_is_not_refreshed_while_a_reader_is_talking_to_the_tag() {
+        let Some(mut e) = with_one_backup() else { return };
+        let t0 = Instant::now();
+        assert!(e.app.can_flush(t0)); // not emulating: always
+        press(&mut e.app, Key::Enter);
+        assert!(e.app.can_flush(t0)); // emulating, no reader yet
+        e.mock.0.borrow_mut().stats = LiveStats { field: true, selected: true, reads: 3, ..Default::default() };
+        e.app.tick(t0);
+        assert!(!e.app.can_flush(t0)); // reader present
+        e.mock.0.borrow_mut().stats.field = false;
+        assert!(!e.app.can_flush(t0 + Duration::from_millis(200))); // just left: still quiet
+        assert!(e.app.can_flush(t0 + Duration::from_millis(700)));
     }
 
     #[test]

@@ -114,13 +114,17 @@ fn main() {
             }
         }
         if app.take_dirty() {
-            app.render(&mut canvas);
-            if let Err(e) = framebuffer.present(&canvas) {
-                eprintln!("zerotag: framebuffer: {e}");
-            }
-            if std::mem::take(&mut app.want_screenshot) {
-                let shot = zerotag_core::screenshot::save(&canvas.to_rgba(), SCREEN_W as u32, SCREEN_H as u32);
-                app.screenshot_result(shot);
+            if !app.can_flush(now) {
+                app.mark_dirty(); // a reader is talking to the tag: draw once it has gone
+            } else {
+                app.render(&mut canvas);
+                if let Err(e) = framebuffer.present(&canvas) {
+                    eprintln!("zerotag: framebuffer: {e}");
+                }
+                if std::mem::take(&mut app.want_screenshot) {
+                    let shot = zerotag_core::screenshot::save(&canvas.to_rgba(), SCREEN_W as u32, SCREEN_H as u32);
+                    app.screenshot_result(shot);
+                }
             }
         }
         std::thread::sleep(Duration::from_millis(20));
