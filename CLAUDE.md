@@ -186,6 +186,9 @@ GPL code from pixl.js (reading it for ideas was already done once; prefer public
 - DONE 2026-11-24: `input` (evdev key table incl. the Sym layer, checked against /usr/include/linux/input-event-codes.h in a test;
   non-blocking `Keypad` reader, keyboard detection through /sys/class/input/eventN/device/capabilities/key instead of an ioctl;
   `KeyRouter` = down / long press 700 ms / up). 44 host tests. NOT yet tried on the device (APPLaunch owns /dev/input/event3).
-- Next: audio, device_status, screenshot_service; then the
+- DONE 2026-11-24: `audio` (same synthesis, aplay via Command; run on the device with `examples/audio_demo`: exits cleanly, no aplay
+  left behind; whether it was audible is for the user to confirm), `device_status` (sysfs roots injectable, tested with fake trees),
+  `screenshot` (PNG encoder for an RGBA buffer, ~/Pictures/Screenshots; the capture itself belongs to the UI layer). 54 host tests.
+- Next: the
   embedded-graphics UI (old line kept below for reference): library_state + config, platform (spidev/gpio ST25R3916 driver, emulation state machine, keyboard via evdev, audio,
   online_update, cap_setup), then the embedded-graphics UI. The NFC parts can only be checked on the device (ask for its address).

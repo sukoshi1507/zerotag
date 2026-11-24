@@ -5,3 +5,6 @@ pub mod config;
 pub mod cap_setup;
 pub mod online_update;
 pub mod input;
+pub mod audio;
+pub mod device_status;
+pub mod screenshot;
