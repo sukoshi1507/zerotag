@@ -4,6 +4,8 @@
 
 use crate::hw::{Hardware, Image};
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread::JoinHandle;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -13,6 +15,7 @@ use zerotag_core::amiibo::{
 use zerotag_core::audio::{self, Sound};
 use zerotag_core::cap_setup::Status as CapStatus;
 use zerotag_core::config::{save_setting, ApplicationConfig};
+use zerotag_core::online_update::download_amiibo_list;
 use zerotag_core::device_status::read_device_status;
 use zerotag_core::input::{Key, Routed};
 use zerotag_core::scan::{backup_stem, ScanIssue, ScanPhase, ScanSnapshot};
@@ -22,6 +25,7 @@ use zerotag_ui::screens::catalogue::{self, CatalogueRow, CatalogueView};
 use zerotag_ui::screens::detail::{self, Confirm, DetailView};
 use zerotag_ui::screens::emulation::{self, EmulationView};
 use zerotag_ui::screens::facets::{self, FacetRow, FacetsView};
+use zerotag_ui::screens::help::{self, HelpContext, HelpView};
 use zerotag_ui::screens::library::{self, LibraryRow, LibraryView, Signature, Tab};
 use zerotag_ui::screens::scan::{self as scan_screen, ScanIssueView, ScanPhaseView, ScanView};
 use zerotag_ui::screens::settings::{self, toggle_value, SettingsRow, SettingsView, Status};
@@ -33,7 +37,7 @@ const ROWS: usize = 4;
 const BANNER: Duration = Duration::from_millis(4000);
 const AUTOSAVE_QUIET: Duration = Duration::from_millis(1500);
 const FACETS: [Facet; 3] = [Facet::AmiiboSeries, Facet::Game, Facet::Type];
-const SETTINGS_ROWS: usize = 7;
+const SETTINGS_ROWS: usize = 9;
 const DISPLAY_QUIET: Duration = Duration::from_millis(600);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,6 +50,7 @@ pub enum Screen {
     Settings,
     CapSetup,
     Scan,
+    Help,
 }
 
 /// Where everything lives.
@@ -124,6 +129,15 @@ fn handle_text_key(key: Key, query: &mut String) -> bool {
     }
 }
 
+/// Downloads the online catalogue to a file; `cancel` is polled. Injected so the tests need no network.
+pub type Downloader = Arc<dyn Fn(&Path, &AtomicBool) -> Result<(), String> + Send + Sync>;
+
+/// The download running on its own thread.
+struct OnlineJob {
+    cancel: Arc<AtomicBool>,
+    handle: JoinHandle<Result<(), String>>,
+}
+
 /// A scan that was read and written to the library.
 #[derive(Debug, Clone)]
 struct SavedScan {
@@ -176,6 +190,10 @@ pub struct App<H: Hardware> {
     scan_failed: Option<String>,
     scan_sounded: bool,
     last_scan: Option<ScanSnapshot>,
+
+    online_job: Option<OnlineJob>,
+    downloader: Downloader,
+    before_help: Screen,
 
     emu_error: Option<String>,
     emu_started: Instant,
@@ -241,6 +259,9 @@ impl<H: Hardware> App<H> {
             scan_failed: None,
             scan_sounded: false,
             last_scan: None,
+            online_job: None,
+            downloader: Arc::new(|dest, cancel| download_amiibo_list(dest, cancel)),
+            before_help: Screen::Library,
             emu_error: None,
             emu_started: now,
             last_stats_key: 0,
@@ -271,6 +292,16 @@ impl<H: Hardware> App<H> {
     // ---- data
 
     fn load_data(&mut self) {
+        self.load_catalogue();
+        self.reload_keys();
+        match LibraryState::load(&self.paths.state) {
+            Ok(s) => self.state = s,
+            Err(e) => eprintln!("library state: {e}"),
+        }
+        self.rescan();
+    }
+
+    fn load_catalogue(&mut self) {
         let db_path = self.paths.assets.join("amiibo/amiibo_db.json");
         match Database::load(&db_path) {
             Ok(mut db) => {
@@ -281,15 +312,10 @@ impl<H: Hardware> App<H> {
                     }
                 }
                 self.db = db;
+                self.db_error = None;
             }
             Err(e) => self.db_error = Some(e),
         }
-        self.reload_keys();
-        match LibraryState::load(&self.paths.state) {
-            Ok(s) => self.state = s,
-            Err(e) => eprintln!("library state: {e}"),
-        }
-        self.rescan();
     }
 
     fn reload_keys(&mut self) {
@@ -383,6 +409,57 @@ impl<H: Hardware> App<H> {
         if screen == Screen::Scan {
             self.start_scan_if_idle();
         }
+    }
+
+    // ---- optional online update of the catalogue
+
+    fn start_online_update(&mut self) {
+        if !self.online {
+            self.say(self.t(Str::UpdateNeedsOn), true);
+            return;
+        }
+        if self.online_job.is_some() {
+            return;
+        }
+        let cancel = Arc::new(AtomicBool::new(false));
+        let (flag, dest, download) = (cancel.clone(), self.paths.online.clone(), self.downloader.clone());
+        let handle = std::thread::spawn(move || {
+            if let Some(parent) = dest.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            download(&dest, &flag)
+        });
+        self.online_job = Some(OnlineJob { cancel, handle });
+        self.dirty = true;
+    }
+
+    fn tick_online_update(&mut self) {
+        if !self.online_job.as_ref().is_some_and(|j| j.handle.is_finished()) {
+            return;
+        }
+        let job = self.online_job.take().expect("checked above");
+        match job.handle.join().unwrap_or_else(|_| Err("download crashed".into())) {
+            Ok(()) => {
+                let before = self.db.entries().len();
+                self.cat_sel = 0;
+                self.cat_top = 0;
+                self.load_catalogue();
+                self.rescan();
+                let added = self.db.entries().len().saturating_sub(before);
+                let msg = if added > 0 {
+                    format(self.lang, Str::UpdateDone, &[&added])
+                } else {
+                    self.t(Str::UpdateUpToDate).to_owned()
+                };
+                self.say(msg, false);
+                audio::play(Sound::Blip);
+            }
+            Err(e) => {
+                self.say(format(self.lang, Str::UpdateFailed, &[&clip_chars(&e, 40)]), true);
+                audio::play(Sound::Error);
+            }
+        }
+        self.dirty = true;
     }
 
     // ---- scan of a real amiibo
@@ -715,7 +792,17 @@ impl<H: Hardware> App<H> {
                 }
                 return;
             }
-            Key::Help => return, // the help screen is not ported yet
+            Key::Help => {
+                if !long && self.screen != Screen::CapSetup {
+                    if self.screen == Screen::Help {
+                        self.go(self.before_help);
+                    } else {
+                        self.before_help = self.screen;
+                        self.go(Screen::Help);
+                    }
+                }
+                return;
+            }
             Key::Esc => {
                 if !long {
                     self.esc_down = true;
@@ -737,7 +824,7 @@ impl<H: Hardware> App<H> {
             Screen::Detail => self.key_detail(key),
             Screen::Facets => self.key_facets(key),
             Screen::Settings => self.key_settings(key),
-            Screen::Emulating | Screen::Scan => {} // ESC leaves (on release)
+            Screen::Emulating | Screen::Scan | Screen::Help => {} // ESC leaves (on release)
         }
     }
 
@@ -943,17 +1030,26 @@ impl<H: Hardware> App<H> {
                 2 => self.toggle_sound(),
                 3 => self.toggle_online(),
                 4 => {
+                    self.start_online_update();
+                    return;
+                }
+                5 => {
                     if !self.hw.spi_available() {
                         self.open_cap_setup(Screen::Settings);
                         return;
                     }
                     self.check_hardware();
                 }
-                5 => {
+                6 => {
                     self.reload_keys();
                     self.rescan();
                 }
-                _ => self.rescan(),
+                7 => self.rescan(),
+                _ => {
+                    self.before_help = Screen::Settings;
+                    self.go(Screen::Help);
+                    return;
+                }
             },
             _ => return,
         }
@@ -1002,6 +1098,7 @@ impl<H: Hardware> App<H> {
                 self.go(Screen::Detail);
             }
             Screen::Scan => self.leave_scan(),
+            Screen::Help => self.go(self.before_help),
             Screen::Settings => self.go(self.before_settings),
             Screen::CapSetup => {
                 if !self.cap_busy {
@@ -1029,6 +1126,7 @@ impl<H: Hardware> App<H> {
                 self.dirty = true;
             }
         }
+        self.tick_online_update();
         if self.screen == Screen::Scan {
             self.tick_scan();
         }
@@ -1089,6 +1187,7 @@ impl<H: Hardware> App<H> {
             }
             Some("capsetup") => Screen::CapSetup,
             Some("scan") => Screen::Scan,
+            Some("help") => Screen::Help,
             _ => return,
         };
         self.go(screen);
@@ -1109,7 +1208,7 @@ impl<H: Hardware> App<H> {
     /// bus, so a screen refresh at that moment delays the chip's answers and the reader gives up. The frame is drawn
     /// as soon as the reader has been gone for `DISPLAY_QUIET`.
     pub fn can_flush(&self, now: Instant) -> bool {
-        if self.screen != Screen::Emulating || !self.hw.emulation_running() {
+        if !self.hw.emulation_running() {
             return true;
         }
         !self.hw.stats().field && self.last_field.is_none_or(|t| now.duration_since(t) >= DISPLAY_QUIET)
@@ -1392,6 +1491,17 @@ impl<H: Hardware> App<H> {
                 };
                 scan_screen::render(&mut p, &ScanView { lang, phase: &phase, banner, battery });
             }
+            Screen::Help => {
+                let context = match self.before_help {
+                    Screen::Catalogue => HelpContext::Catalogue,
+                    Screen::Facets => HelpContext::Facets,
+                    Screen::Detail => HelpContext::Detail,
+                    Screen::Emulating => HelpContext::Emulating,
+                    Screen::Settings => HelpContext::Settings,
+                    _ => HelpContext::Library,
+                };
+                help::render(&mut p, &HelpView { lang, context, banner, battery });
+            }
             Screen::CapSetup => cap_setup::render(
                 &mut p,
                 &CapSetupView {
@@ -1425,6 +1535,7 @@ impl<H: Hardware> App<H> {
                 value: toggle_value(self.lang, self.online),
                 ..Default::default()
             },
+            SettingsRow { title: t(Str::SettingsUpdate), detail: self.update_detail(), ..Default::default() },
             SettingsRow {
                 title: t(Str::SetupCap),
                 detail: if self.cap_status.is_empty() { t(Str::SetupNotChecked) } else { clip_chars(&self.cap_status, 70) },
@@ -1447,7 +1558,30 @@ impl<H: Hardware> App<H> {
                 status: Some(if self.library_ok && self.db_error.is_none() { Status::Ok } else { Status::Warning }),
                 ..Default::default()
             },
+            SettingsRow { title: t(Str::HelpTitle), detail: t(Str::HelpMenuHint), ..Default::default() },
         ]
+    }
+
+    fn update_detail(&self) -> String {
+        if self.online_job.is_some() {
+            self.t(Str::UpdateRunning).to_owned()
+        } else if !self.online {
+            self.t(Str::UpdateNeedsOn).to_owned()
+        } else if self.paths.online.is_file() {
+            let fresh = self.db.entries().iter().filter(|e| e.online).count();
+            format(self.lang, Str::UpdateKnown, &[&fresh])
+        } else {
+            self.t(Str::UpdateHint).to_owned()
+        }
+    }
+}
+
+impl<H: Hardware> Drop for App<H> {
+    fn drop(&mut self) {
+        if let Some(job) = self.online_job.take() {
+            job.cancel.store(true, Ordering::Relaxed);
+            let _ = job.handle.join();
+        }
     }
 }
 
@@ -1830,7 +1964,7 @@ mod tests {
         let mut canvas = Canvas::new(320, 170, 0);
         for lang in [Lang::Fr, Lang::En, Lang::Ja, Lang::Zh] {
             e.app.set_language(lang);
-            for screen in [Screen::Library, Screen::Catalogue, Screen::Facets, Screen::Detail, Screen::Emulating, Screen::Settings, Screen::CapSetup, Screen::Scan] {
+            for screen in [Screen::Library, Screen::Catalogue, Screen::Facets, Screen::Detail, Screen::Emulating, Screen::Settings, Screen::CapSetup, Screen::Scan, Screen::Help] {
                 e.app.screen = screen;
                 e.app.render(&mut canvas);
             }
@@ -1963,6 +2097,133 @@ mod tests {
         }
         press(&mut e.app, Key::Esc);
         assert_eq!(e.mock.0.borrow().scans_stopped, 1);
+    }
+
+    #[test]
+    fn help_opens_with_fn_h_from_any_screen_and_returns_to_it() {
+        let Some(mut e) = env(true, true) else { return };
+        let mut canvas = Canvas::new(320, 170, 0);
+        for (open, back) in [(Key::Tab, Screen::Catalogue), (Key::F1, Screen::Settings)] {
+            press(&mut e.app, open);
+            assert_eq!(e.app.screen, back);
+            press(&mut e.app, Key::Help);
+            assert_eq!((e.app.screen, e.app.before_help), (Screen::Help, back));
+            for lang in [Lang::Fr, Lang::En, Lang::Ja, Lang::Zh] {
+                e.app.set_language(lang);
+                e.app.render(&mut canvas);
+            }
+            e.app.set_language(Lang::Fr);
+            press(&mut e.app, Key::Help); // toggles
+            assert_eq!(e.app.screen, back);
+            press(&mut e.app, Key::Help);
+            press(&mut e.app, Key::Esc); // ESC leaves too
+            assert_eq!(e.app.screen, back);
+            press(&mut e.app, Key::Esc);
+        }
+        // from the settings list: the "Aide" row opens it
+        press(&mut e.app, Key::F1);
+        for _ in 0..8 {
+            press(&mut e.app, Key::Down);
+        }
+        press(&mut e.app, Key::Enter);
+        assert_eq!((e.app.screen, e.app.before_help), (Screen::Help, Screen::Settings));
+        press(&mut e.app, Key::Esc);
+        assert_eq!(e.app.screen, Screen::Settings);
+        // not on the password screen: the key is a character there
+        let Some(mut e2) = env(false, true) else { return };
+        press(&mut e2.app, Key::Help);
+        assert_eq!(e2.app.screen, Screen::CapSetup);
+    }
+
+    fn fake_online_list() -> &'static str {
+        r#"{"amiibo":[
+          {"head":"0x09990000","tail":"0x00010002","name":"Brand New","amiiboSeries":"Future","gameSeries":"Test","type":"Figure","release":{"na":"2099-01-01"}},
+          {"head":"0x01010000","tail":"0x000e0002","name":"Zelda","release":{"na":"2014-11-21"}}]}"#
+    }
+
+    fn wait_online(e: &mut Env) {
+        for _ in 0..400 {
+            e.app.tick(Instant::now());
+            if e.app.online_job.is_none() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        panic!("the download did not finish");
+    }
+
+    #[test]
+    fn online_update_needs_the_option_then_downloads_merges_and_reports() {
+        let Some(mut e) = env(true, true) else { return };
+        let calls = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let c = calls.clone();
+        e.app.downloader = Arc::new(move |dest, _| {
+            c.fetch_add(1, Ordering::SeqCst);
+            std::fs::write(dest, fake_online_list()).map_err(|e| e.to_string())
+        });
+        press(&mut e.app, Key::F1);
+        for _ in 0..4 {
+            press(&mut e.app, Key::Down);
+        }
+        press(&mut e.app, Key::Enter); // "Chercher nouveautés" while Online is off
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        assert!(e.app.banner.as_ref().is_some_and(|b| b.1 && b.0 == tr(Lang::Fr, Str::UpdateNeedsOn)));
+
+        for _ in 0..1 {
+            press(&mut e.app, Key::Up);
+        }
+        press(&mut e.app, Key::Enter); // Online on
+        assert!(e.app.online);
+        press(&mut e.app, Key::Down);
+        let before = e.app.db.entries().len();
+        press(&mut e.app, Key::Enter); // start
+        assert!(e.app.online_job.is_some() || calls.load(Ordering::SeqCst) == 1);
+        press(&mut e.app, Key::Enter); // pressing again while running does not start a second download
+        wait_online(&mut e);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(e.app.db.entries().len(), before + 1);
+        assert!(e.app.banner.as_ref().is_some_and(|b| b.0 == format(Lang::Fr, Str::UpdateDone, &[&1usize])));
+        let fresh = e.app.db.entries().iter().find(|en| en.name == "Brand New").unwrap();
+        assert!(fresh.online && fresh.release == "2099-01-01");
+        assert!(App::<Mock>::is_upcoming(fresh)); // shown as SOON
+        assert!(e.app.update_detail().contains('1')); // "1 nouveaux dans le catalogue"
+
+        // a second update finds nothing new
+        press(&mut e.app, Key::Enter);
+        wait_online(&mut e);
+        assert!(e.app.banner.as_ref().is_some_and(|b| b.0 == tr(Lang::Fr, Str::UpdateUpToDate)));
+    }
+
+    #[test]
+    fn a_failed_download_is_reported_and_leaves_the_catalogue_alone() {
+        let Some(mut e) = env(true, true) else { return };
+        e.app.online = true;
+        e.app.downloader = Arc::new(|_, _| Err("curl is not installed (sudo apt install curl)".into()));
+        let before = e.app.db.entries().len();
+        e.app.start_online_update();
+        wait_online(&mut e);
+        assert_eq!(e.app.db.entries().len(), before);
+        let banner = e.app.banner.clone().unwrap();
+        assert!(banner.1 && banner.0.contains("curl is not installed"), "{}", banner.0);
+        assert!(banner.0.chars().count() < 60); // the reason is cut to 40 characters
+    }
+
+    #[test]
+    fn dropping_the_app_cancels_a_running_download() {
+        let Some(mut e) = env(true, true) else { return };
+        e.app.online = true;
+        let seen = Arc::new(AtomicBool::new(false));
+        let s = seen.clone();
+        e.app.downloader = Arc::new(move |_, cancel| {
+            while !cancel.load(Ordering::Relaxed) {
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            s.store(true, Ordering::SeqCst);
+            Err("cancelled".into())
+        });
+        e.app.start_online_update();
+        drop(e); // would hang here if the download were not told to stop
+        assert!(seen.load(Ordering::SeqCst));
     }
 
     #[test]

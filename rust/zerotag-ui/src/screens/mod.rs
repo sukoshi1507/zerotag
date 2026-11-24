@@ -4,6 +4,7 @@ pub mod catalogue;
 pub mod detail;
 pub mod emulation;
 pub mod facets;
+pub mod help;
 pub mod library;
 pub mod scan;
 pub mod settings;

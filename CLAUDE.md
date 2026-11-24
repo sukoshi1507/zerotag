@@ -247,6 +247,12 @@ GPL code from pixl.js (reading it for ideas was already done once; prefer public
   different file name via the UID suffix). Verified on the device: a real Bokoblin read in ~10 s (135 pages), recognised, saved. A blank
   NTAG215 (CC E1 10 3E 00, model id zeros) is correctly "hors catalogue". Test runs use ZEROTAG_AMIIBO_DIR=/tmp/zscan and `--screen scan`
   (prints `scan: ...` status lines); the dump was shredded. The device now runs the Rust build WITH the scan.
+- Help (Fn+H, contextual lines per screen, toggles, ESC leaves, not on the password screen; Settings row "Aide") and the online update
+  (Settings > "Chercher nouveautés": needs the Online toggle, curl thread with an injectable `Downloader`, reload + merge of the catalogue,
+  banners UpdateDone/UpToDate/Failed, download cancelled when the app is dropped) ported 2026-11-24; settings rows are now
+  language, rotation, sound, online, update, cap, keys, folder, help (the manual row is still missing). 23 app tests. `can_flush` now keeps
+  the display quiet for ANY screen while an emulation runs (Help can be opened during one). Installed on the device; the real download and
+  the keyboard use were left for the user to try.
 - Next: the
   embedded-graphics UI (old line kept below for reference): library_state + config, platform (spidev/gpio ST25R3916 driver, emulation state machine, keyboard via evdev, audio,
   online_update, cap_setup), then the embedded-graphics UI. The NFC parts can only be checked on the device (ask for its address).
