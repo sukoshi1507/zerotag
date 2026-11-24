@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Runs from legacy/ (the C++ version); the packages land in ../dist.
+cd "$(dirname "${BASH_SOURCE[0]}")"
+
 WORKFLOW_PRESET="${WORKFLOW_PRESET:-cp0-cross-package}"
 REMOTE_USER="${REMOTE_USER:-}"
 REMOTE_HOST="${REMOTE_HOST:-}"
 REMOTE_DIR="${REMOTE_DIR:-/home/${REMOTE_USER}}"
-PACKAGE_GLOB="${PACKAGE_GLOB:-dist/zerotag_*_arm64.deb}"
+PACKAGE_GLOB="${PACKAGE_GLOB:-../dist/ZeroTag_*_arm64.deb}"
 
 log() {
   printf '\n==> %s\n' "$*"

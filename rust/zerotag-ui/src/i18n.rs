@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-//! Translations (French, English, Japanese). The table is generated from src/app/i18n_strings.def.
+//! Translations (French, English, Japanese). The table is generated from tools/i18n_strings.tsv.
 
 use crate::i18n_strings::{Str, TABLE};
 

@@ -12,8 +12,9 @@ on a console, and keep what the game writes back.
   image, with the signature checked when your keys are present. Type to filter the list.
 - **Catalogue** of 954 characters (metadata from [AmiiboAPI](https://www.amiiboapi.org)); create a blank,
   correctly signed amiibo with a random UID.
-- **Emulation** of an NTAG215 over NFC-A (ISO 14443-3A) with live counters. Verified with a Flipper Zero and a
-  Nintendo Switch 2 (Breath of the Wild): the console reads the figure, and registering an owner works.
+- **Emulation** of an NTAG215 over NFC-A (ISO 14443-3A) with live counters. Verified with a Flipper Zero and with
+  a Nintendo Switch 2, a 3DS and a Wii U: the console reads the figure, and registering an owner works.
+- **Scan** of your real figures (`F4` in the library): put the amiibo on the Cap, it is read and saved to your folder.
 - **Writes are kept**: what a console writes is saved to the file, automatically a moment after the last write
   and again when you stop. Signatures stay valid.
 - **UID rotation** (optional): after each read the amiibo gets a new UID, re-signed with your keys, so a game
@@ -24,7 +25,8 @@ on a console, and keep what the game writes back.
   marked `NEW`, or `SOON` before their release date. Only that public list is requested; nothing about you or the
   device is sent. The answer is kept in `~/.zerotag/amiibo_online.json`; without the option the app never uses
   the network.
-- Famicom-style interface in French, English and Japanese, with in-app help (`Fn+H`).
+- Famicom-style interface in French, English, Japanese and Simplified Chinese, with in-app help (`Fn+H`) and a
+  demoscene manual in the settings.
 
 ## What you need
 
@@ -84,48 +86,41 @@ Settings (`F1`) holds the language, UID rotation, sound, the online update, and 
 
 ## Build from source
 
-ZeroTag targets the CardputerZero (Debian 13, aarch64). The build cross-compiles with the host `clang` against the
-device BSP sysroot, which the toolchain file downloads on first use.
-
-Requirements: `cmake` 3.31+, `ninja`, `clang`, `aarch64-linux-gnu` binutils, and network access for the first
-configure (LVGL, fmt, Mbed TLS are fetched).
-
-```shell
-cmake --preset cp0-cross-clang
-cmake --build build/cp0-cross-clang --config Release
-cpack --config build/cp0-cross-clang/CPackConfig.cmake -G DEB -C Release   # -> dist/*.deb
-```
-
-Host tools (built on the same configure): `zerotag_amiibo_gen`, `zerotag_amiibo_verify` and test programs for the
-amiibo code (`zerotag_amiibo_library_test`, which needs your keys: `tools/amiibo_library_test.cpp`).
-`tools/st25r3916_emulate.cpp` and `tools/st25r3916_probe.cpp` are command-line hardware tests for the Cap.
-
-### Rust version (branch `rust-port`)
-
-A Rust port lives in `rust/` (same features, plus Simplified Chinese): `zerotag-core` (amiibo images and signatures with
-RustCrypto, catalogue, ST25R3916 driver and emulation, scan, config, audio), `zerotag-ui` (a small software renderer, no GUI toolkit)
-and `zerotag-app` (the `zerotag` binary). It draws on the framebuffer and needs the Noto Sans CJK fonts of the device
-(`fonts-noto-cjk`). Statically linked, no library to install.
+ZeroTag is written in Rust (`rust/`) and targets the CardputerZero (Debian 13, aarch64). It draws straight on the
+framebuffer and needs the Noto Sans CJK fonts of the device (`fonts-noto-cjk`). The binary is statically linked.
 
 ```shell
 cd rust && cargo test                      # 100+ tests, no hardware needed (they use a fake chip)
 packaging/build-rust-deb.sh                # cross-build + dist/ZeroTag_<version>_rev1_arm64.deb (no thumbnails)
-packaging/build-rust-deb.sh --with-images  # private build with the amiibo thumbnails
+packaging/build-rust-deb.sh --with-images  # the same with the amiibo thumbnails (fetch them first, see below)
 ```
 
 The cross build needs the `aarch64-unknown-linux-gnu` target and `aarch64-linux-gnu-gcc` (see `rust/.cargo/config.toml`).
+The thumbnails are not in the repository: `python3 tools/fetch_amiibo_images.py` downloads them into
+`assets/amiibo/images/`; the app also reads `~/.zerotag/images/`.
+
 Test tools: `cargo build --release --examples` gives `st25r_probe`, `st25r_emulate`, `amiibo_gen`, `amiibo_verify`,
-`amiibo_rotate`; `zerotag --png out.png --screen library|catalogue|settings|detail|help|manual|scan` renders a screen to a file.
+`amiibo_rotate` (command-line hardware and image tools). `zerotag --png out.png --screen
+library|catalogue|settings|detail|help|manual|scan` renders a screen to a file without any display.
+The interface texts are in `tools/i18n_strings.tsv` (`python3 tools/gen_i18n_rs.py` regenerates the Rust table).
+
+### The previous C++ version (`legacy/`)
+
+Versions up to 0.5 were written in C++ with LVGL. The sources are kept in `legacy/` for reference; they still build
+(`cd legacy && cmake --preset cp0-cross-clang && cmake --build build/cp0-cross-clang --config Release`, which needs
+`cmake` 3.31+, `ninja`, `clang`, `aarch64-linux-gnu` binutils and network access for the first configure) but are no
+longer maintained.
 
 ## How it works
 
 - `packaging/cap-setup`: the root helper that loads the SPI overlay (`spi0-spidev2-gpio22-overlay`).
-- `src/platform/st25r3916*.cpp`: a Linux userspace driver for the ST25R3916 (SPI, GPIO power) and an NFC-A
-  card emulation state machine that serves the NTAG215 command set (READ, FAST_READ, GET_VERSION, READ_SIG,
-  PWD_AUTH, WRITE, HLTA) in software.
-- `src/amiibo/`: image generation, signature checks and UID rotation on top of amiitool; the catalogue loader and
-  the folder library.
-- `src/app/zerotag_ui.*`: the LVGL interface; texts live in `src/app/i18n_strings.def`.
+- `rust/zerotag-core`: amiibo images and signatures (key derivation, AES-CTR, HMAC with RustCrypto, UID rotation), the
+  catalogue and the folder library, the ST25R3916 driver, the NFC-A card emulation state machine (it serves the NTAG215
+  command set READ, FAST_READ, GET_VERSION, READ_SIG, PWD_AUTH, WRITE, HLTA in software), the scan, config, audio and the
+  keyboard.
+- `rust/zerotag-ui`: a small software renderer for the 320x170 screens (no GUI toolkit) and the translations.
+- `rust/zerotag-app`: the `zerotag` binary: screens, key handling and the framebuffer output.
+- The panel and the Cap share a SPI bus: the app never refreshes the screen while a reader is talking to the emulated tag.
 
 ## Legal
 

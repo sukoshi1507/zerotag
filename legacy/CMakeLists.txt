@@ -8,6 +8,9 @@ cmake_minimum_required(VERSION 3.31)
 
 project(zerotag VERSION 0.5.0 LANGUAGES C CXX)
 
+# This C++ version lives in legacy/; the assets, config and packaging files it shares with the Rust version are at the repository root.
+get_filename_component(ZEROTAG_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -33,7 +36,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE BOOL "Export compile_commands.json" F
 
 if(NOT APP_CONFIG_FILE)
     if(USE_DESKTOP)
-        set(APP_CONFIG_FILE "${CMAKE_CURRENT_SOURCE_DIR}/config/zerotag.conf")
+        set(APP_CONFIG_FILE "${ZEROTAG_ROOT}/config/zerotag.conf")
     else()
         set(APP_CONFIG_FILE "/etc/zerotag.conf")
     endif()
@@ -588,7 +591,7 @@ target_compile_definitions(${PROJECT_NAME}_core
         APP_NAME="${APP_NAME}"
         APP_CONFIG_FILE="${APP_CONFIG_FILE}"
         APP_CMAKE_ASSETS_ROOT="${APP_ASSETS_ROOT}"
-        APP_SOURCE_ASSETS_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/assets"
+        APP_SOURCE_ASSETS_ROOT="${ZEROTAG_ROOT}/assets"
         APP_FRAMEBUFFER_DEVICE="${APP_FRAMEBUFFER_DEVICE}"
         APP_DRM_DEVICE="${APP_DRM_DEVICE}"
         APP_DRM_CONNECTOR_ID=${APP_DRM_CONNECTOR_ID}

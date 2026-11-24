@@ -1,0 +1,187 @@
+# Name<TAB>French<TAB>English<TAB>Japanese<TAB>Simplified Chinese. Source of truth of the Rust interface strings;
+# `python3 tools/gen_i18n_rs.py` turns it into rust/zerotag-ui/src/i18n_strings.rs. Placeholders (%s %d %zu %u) must match in all languages.
+LibraryTitle	Bibliothèque	Library	ライブラリ	资料库
+CatalogueTitle	Catalogue	Catalogue	カタログ	图鉴
+EmulationTitle	Émulation	Emulation	エミュレーション	模拟
+SetupTitle	Réglages	Settings	設定	设置
+SettingsLanguage	Langue	Language	言語	语言
+LabelFile	Fichier	File	ファイル	文件
+NotFound	Introuvable	Not found	見つかりません	未找到
+KeyUpDown	Haut/Bas	Up/Down	↑↓	↑↓
+KeyEnter	ENTRÉE	ENTER	ENTER	ENTER
+KeyTab	TAB	TAB	TAB	TAB
+KeyEsc	ÉCHAP	ESC	ESC	ESC
+KeyDel	SUPPR	DEL	DEL	DEL
+HintChoose	Choix	Select	選択	选择
+HintOpen	Ouvrir	Open	開く	打开
+HintCatalogue	Catalogue	Catalogue	カタログ	图鉴
+HintLibrary	Biblio.	Library	ライブラリ	资料库
+HintState	État	Status	状態	状态
+HintLanguage	Langue	Language	言語	语言
+HintCreate	Créer	Create	作成	创建
+HintBack	Retour	Back	戻る	返回
+HintEmulate	Émuler	Emulate	エミュレート	模拟
+HintNewUid	Nouvel UID	New UID	新UID	新UID
+HintDelete	Supprimer	Delete	削除	删除
+HintRecheck	Revérifier	Recheck	再確認	重新检测
+HintStop	Stop	Stop	停止	停止
+HintSettings	Réglages	Settings	設定	设置
+HintChange	Changer	Change	変更	更改
+HintFilter	Filtrer	Filter	絞り込み	筛选
+FilterPlaceholder	Taper pour filtrer…	Type to filter…	入力して絞り込み…	输入以筛选…
+LibraryEmpty	Aucun amiibo dans la bibliothèque.	No amiibo in the library.	amiiboがありません。	资料库中没有amiibo。
+NoResult	Aucun résultat.	No result.	見つかりません。	没有结果。
+LibraryHowTo	Tab : catalogue, Entrée crée un amiibo.	Tab: catalogue, Enter creates an amiibo.	Tab: カタログ、Enterで作成。	Tab：图鉴，Enter创建amiibo。
+KeysMissingF1	Clés introuvables : F1	Keys not found: F1	キーが見つかりません: F1	未找到密钥：F1
+SigUnchecked	Signature non vérifiée	Signature not checked	署名: 未確認	签名：未检查
+SigValid	Signature valide	Signature valid	署名: 有効	签名：有效
+SigInvalid	Signature invalide	Signature invalid	署名: 無効	签名：无效
+SearchPlaceholder	Rechercher un personnage…	Search a character…	キャラクターを検索…	搜索角色…
+CatalogueUnreadable	Catalogue illisible :	Catalogue unreadable:	カタログを読めません:	无法读取图鉴：
+Owned	possédé	owned	所持	已拥有
+NoteKeysTitle	Clés introuvables	Keys not found	キーが見つかりません	未找到密钥
+NoteKeysBody	Création impossible : voir F1.	Cannot create: see F1.	作成できません: F1を参照	无法创建：请见F1。
+NoteOwnedTitle	Déjà possédé	Already owned	所持済み	已拥有
+NoteOwnedBody	Entrée en crée un autre exemplaire.	Enter creates another copy.	Enterでもう1つ作成します。	按Enter再创建一个副本。
+NoteNewTitle	Pas encore possédé	Not owned yet	未所持	尚未拥有
+NoteNewBody	Entrée crée une image vierge signée.	Enter creates a signed blank image.	Enterで署名済みの空データを作成します。	按Enter创建带签名的空白镜像。
+FacetsTitle	Filtrer par	Filter by	絞り込み	筛选方式
+FacetSeries	Série amiibo	amiibo series	amiiboシリーズ	amiibo系列
+FacetGame	Jeu	Game	ゲーム	游戏
+FacetType	Type	Type	種類	类型
+FacetValuesCount	%zu valeurs	%zu values	%zu 件の値	%zu 个值
+FacetChip	%s : %s	%s: %s	%s: %s	%s：%s
+UnknownCharacter	Personnage hors catalogue	Character not in the catalogue	カタログにないキャラクター	图鉴中没有此角色
+ButtonEmulate	ENTRÉE  Émuler	ENTER  Emulate	ENTER エミュレート	ENTER  模拟
+ButtonReset	R  Neuf	R  New	R  新規	R  重置
+ButtonResetAsk	R ?	R ?	R ?	R ?
+ButtonDelete	SUPPR	DEL	削除	DEL
+ButtonDeleteAsk	SUPPR ?	DEL ?	削除 ?	DEL ?
+EmuWaiting	En attente d'un lecteur…	Waiting for a reader…	リーダーを待っています…	正在等待读卡器…
+EmuDetected	Lecteur détecté…	Reader detected…	リーダーを検出…	检测到读卡器…
+EmuConnected	Lecteur connecté	Reader connected	リーダーに接続中	读卡器已连接
+EmuWaitHelp	Pose le Cap contre la zone NFC de la console quand le jeu demande de scanner.	Hold the Cap against the console's NFC area when the game asks to scan.	ゲームがスキャンを求めたら、Capを本体のNFC部分に当ててください。	游戏提示扫描时，请将Cap贴近主机的NFC区域。
+EmuConnHelp	Garde le Cap en place jusqu'à la fin du chargement.	Keep the Cap in place until loading ends.	読み込みが終わるまでCapを動かさないでください。	加载完成前请保持Cap不动。
+EmuReads	Lectures	Reads	読み取り	读取
+EmuWrites	Écritures	Writes	書き込み	写入
+EmuWritesPending	%u – à enregistrer	%u – to be saved	%u・保存待ち	%u·待保存
+EmuDuration	Durée	Time	経過	时长
+EmuFooterNote	Les écritures du jeu sont enregistrées à l'arrêt.	The game's writes are saved when you stop.	ゲームの書き込みは停止時に保存されます。	游戏的写入会在停止时保存。
+EmuStopButton	ÉCHAP  Stop	ESC  Stop	ESC  停止	ESC  停止
+EmuFailed	Émulation impossible	Emulation failed	エミュレーションできません	无法模拟
+EmuInterrupted	émulation interrompue	emulation interrupted	エミュレーションが中断されました	模拟已中断
+ErrSpi	Port SPI absent : lance sudo /usr/lib/zerotag/cap-setup	SPI port missing: run sudo /usr/lib/zerotag/cap-setup	SPIポートがありません: sudo /usr/lib/zerotag/cap-setup を実行	缺少SPI端口：请运行 sudo /usr/lib/zerotag/cap-setup
+ErrPerms	Droits insuffisants sur le Cap (groupes spi et gpio).	Not allowed to use the Cap (groups spi and gpio).	Capへのアクセス権がありません(spi/gpioグループ)。	无权使用Cap（需要spi和gpio用户组）。
+ErrGeneric	Vérifie le Cap et relance (F1 : état).	Check the Cap and retry (F1: status).	Capを確認して再試行(F1: 状態)。	请检查Cap后重试（F1：状态）。
+SetupCap	Cap CC1101 – NFC	Cap CC1101 – NFC	Cap CC1101 – NFC	Cap CC1101 – NFC
+SetupNotChecked	Non vérifié (R)	Not checked (R)	未確認 (R)	未检测 (R)
+SetupCapDetected	ST25R3916 détecté, révision %d	ST25R3916 detected, revision %d	ST25R3916を検出、リビジョン %d	检测到ST25R3916，版本 %d
+SetupFolder	Dossier des amiibo	Amiibo folder	amiiboフォルダ	amiibo文件夹
+SetupFolderInfo	%s – %zu sauvegardes – %zu personnages au catalogue	%s – %zu backups – %zu characters in the catalogue	%s・%zu 件のバックアップ・カタログ %zu 体	%s·%zu 个备份·图鉴共 %zu 个角色
+SetupFolderAbsent	Dossier absent : %s (créé au premier amiibo)	Folder missing: %s (created with the first amiibo)	フォルダなし: %s(最初のamiibo作成時に作成)	文件夹不存在：%s（创建第一个amiibo时自动创建）
+SetupKeysOk	Clés trouvées	Keys found	キーあり	已找到密钥
+SetupKeysHelp	Copie key_retail.bin dans %s	Copy key_retail.bin to %s	key_retail.bin を %s にコピー	请将key_retail.bin复制到 %s
+BannerFailed	Échec : %s	Failed: %s	失敗: %s	失败：%s
+BannerCreated	Créé : %s	Created: %s	作成: %s	已创建：%s
+BannerDeleted	Supprimé : %s	Deleted: %s	削除: %s	已删除：%s
+BannerCantDelete	Suppression impossible	Cannot delete	削除できません	无法删除
+BannerResetDone	Réinitialisé avec un nouvel UID	Reset with a new UID	新しいUIDでリセットしました	已用新UID重置
+BannerSaved	Écritures enregistrées dans %s	Writes saved to %s	書き込みを %s に保存しました	写入已保存到 %s
+BannerSaveFailed	Enregistrement impossible : %s	Cannot save: %s	保存できません: %s	无法保存：%s
+BannerCapture	Capture : %s	Screenshot: %s	キャプチャ: %s	截图：%s
+BannerCaptureFailed	Capture impossible	Screenshot failed	キャプチャできません	截图失败
+BannerConfirmReset	Appuie encore sur R : efface la sauvegarde de jeu	Press R again: erases the game save	もう一度R: ゲームのセーブが消えます	再按一次R：将清除游戏存档
+BannerConfirmDelete	Appuie encore sur Suppr : supprime le fichier	Press Del again: deletes the file	もう一度削除キー: ファイルを削除します	再按一次Del：将删除文件
+BannerLanguage	Langue : %s	Language: %s	言語: %s	语言：%s
+HintRotation	Rotation	Rotate	回転	轮换
+ChipRotation	Rotation UID	UID rotation	UID回転	UID轮换
+ValueOn	OUI	ON	オン	开
+ValueOff	NON	OFF	オフ	关
+SettingsRotation	Rotation d'UID	UID rotation	UID回転	UID轮换
+BannerRotationOn	Rotation d'UID activée	UID rotation on	UID回転: オン	UID轮换：开
+BannerRotationOff	Rotation d'UID désactivée	UID rotation off	UID回転: オフ	UID轮换：关
+BannerAutosaved	Sauvegarde automatique	Autosaved	自動保存しました	已自动保存
+EmuRotations	Rotations	Rotations	回転数	轮换次数
+HelpTitle	Aide	Help	ヘルプ	帮助
+HelpMenuHint	Fn+H : aide, partout	Fn+H: help, anywhere	Fn+H: どこでもヘルプ	Fn+H：随处可用的帮助
+HelpChoose	Choisir dans la liste	Move in the list	リストで選択	在列表中移动
+HelpOpen	Ouvrir la fiche	Open the details	詳細を開く	打开详情
+HelpTypeFilter	Taper pour filtrer la liste	Type to filter the list	入力でリストを絞り込み	输入以筛选列表
+HelpTypeSearch	Taper pour chercher un personnage	Type to search a character	入力でキャラクター検索	输入以搜索角色
+HelpToCatalogue	Aller au catalogue	Go to the catalogue	カタログへ	前往图鉴
+HelpToLibrary	Revenir à la bibliothèque	Back to the library	ライブラリへ戻る	返回资料库
+HelpSettings	Ouvrir les réglages	Open the settings	設定を開く	打开设置
+HelpHoldQuit	Maintenir pour quitter	Hold to quit	長押しで終了	长按退出
+HelpCreate	Créer un amiibo vierge signé	Create a signed blank amiibo	署名済みの空amiiboを作成	创建带签名的空白amiibo
+HelpClearBack	Effacer saisie et filtre, puis retour	Clear the text and filter, then go back	入力と絞り込みを消去、次に戻る	清除输入和筛选，然后返回
+HelpFilter	Filtrer par série, jeu ou type	Filter by series, game or type	シリーズ・ゲーム・種類で絞り込み	按系列、游戏或类型筛选
+HelpFacetPick	Choisir la catégorie, puis la valeur	Pick a category, then a value	分類、次に値を選択	先选分类，再选值
+HelpEmulate	Émuler : Cap contre la console	Emulate: Cap against the console	エミュレート: Capを本体に	模拟：将Cap贴近主机
+HelpNewUid	Remise à zéro, nouvel UID (2 fois)	Reset with a new UID (twice)	新UIDで初期化(2回押す)	用新UID重置（按两次）
+HelpDelete	Supprimer le fichier (2 fois)	Delete the file (twice)	ファイル削除(2回押す)	删除文件（按两次）
+HelpRotation	Nouvel UID après chaque lecture	New UID after each read	読み取りごとに新UID	每次读取后使用新UID
+HelpBack	Retour	Back	戻る	返回
+HelpStopSave	Arrêter et enregistrer	Stop and save	停止して保存	停止并保存
+HelpAutosave	Les écritures sont aussi sauvées seules.	Writes are also saved automatically.	書き込みは自動でも保存されます。	写入也会自动保存。
+HelpChange	Changer la valeur	Change the value	値を変更	更改数值
+CapSetupTitle	Activer le Cap NFC	Enable the NFC Cap	NFC Capを有効化	启用NFC Cap
+CapSetupText	Le port SPI n'est pas chargé. Entre le mot de passe sudo pour l'activer (Entrée seule si sudo n'en demande pas).	The SPI port is not loaded. Enter your sudo password to enable it (just Enter if sudo asks for none).	SPIポートが未ロードです。sudoパスワードを入力して有効化(不要ならEnterのみ)。	SPI端口尚未加载。请输入sudo密码以启用（如果sudo不需要密码，直接按Enter）。
+CapPassword	Mot de passe	Password	パスワード	密码
+CapBusy	Activation…	Enabling…	有効化中…	正在启用…
+CapDone	Cap activé	Cap enabled	Capを有効化しました	Cap已启用
+CapBadPassword	Mot de passe refusé ou sudo indisponible	Password refused or sudo unavailable	パスワードが拒否されたか、sudoが使えません	密码被拒绝，或sudo不可用
+CapFailed	Échec de cap-setup : %s	cap-setup failed: %s	cap-setup失敗: %s	cap-setup失败：%s
+HintValidate	Valider	Confirm	決定	确认
+HintSkip	Ignorer	Skip	スキップ	跳过
+TabAll	Tous	All	全て	全部
+TabFavorites	Favoris	Favorites	お気に入り	收藏
+TabRecent	Récents	Recent	最近	最近
+HintFavorite	Favori	Favorite	お気に入り	收藏
+HintTabs	Onglets	Tabs	タブ	标签页
+HelpFavTabs	Favori / onglets (F3)	Favourite / tabs (F3)	お気に入り / タブ(F3)	收藏 / 标签页 (F3)
+EmptyFavorites	Aucun favori. F2 sur un amiibo pour l'ajouter.	No favourite. Press F2 on an amiibo to add it.	お気に入りはありません。F2で追加できます。	没有收藏。在amiibo上按F2即可添加。
+EmptyRecent	Aucune émulation récente.	No recent emulation.	最近のエミュレーションはありません。	最近没有模拟记录。
+BannerFavAdded	Favori ajouté : %s	Favourite added: %s	お気に入りに追加: %s	已添加收藏：%s
+BannerFavRemoved	Favori retiré : %s	Favourite removed: %s	お気に入りから削除: %s	已取消收藏：%s
+ScanTitle	Scanner	Scan	スキャン	扫描
+ScanOpening	Ouverture du Cap…	Opening the Cap…	Capを開いています…	正在打开Cap…
+ScanWaiting	Approche la figurine	Bring the figure close	フィギュアを近づけてください	请靠近手办
+ScanWaitHelp	Pose l'amiibo sur la zone NFC du Cap et garde-le immobile.	Place the amiibo on the Cap's NFC area and keep it still.	amiiboをCapのNFC部分に置き、動かさないでください。	将amiibo放在Cap的NFC区域并保持不动。
+ScanReading	Lecture en cours…	Reading…	読み取り中…	正在读取…
+ScanKeepHelp	Garde la figurine en place jusqu'à la fin.	Keep the figure in place until the end.	終わるまでフィギュアを動かさないでください。	读取完成前请保持手办不动。
+ScanProgress	%d / %d pages	%d / %d pages	%d / %d ページ	%d / %d 页
+ScanSaved	Amiibo enregistré	Amiibo saved	amiiboを保存しました	amiibo已保存
+ScanFailed	Scan impossible	Scan failed	スキャンできません	无法扫描
+ScanNotNtag	Ce tag n'est pas un NTAG215 (amiibo).	This tag is not an NTAG215 (amiibo).	NTAG215(amiibo)ではないタグです。	此标签不是NTAG215（amiibo）。
+ScanReadFailed	Lecture interrompue à la page %d : replace la figurine.	Read stopped at page %d: put the figure back.	%dページで読み取り中断: フィギュアを置き直してください。	读取在第 %d 页中断：请重新放好手办。
+BannerScanned	Scanné : %s	Scanned: %s	スキャン: %s	已扫描：%s
+HelpScan	Scanner une figurine réelle	Scan a real figure	実物のフィギュアをスキャン	扫描真实手办
+SettingsSound	Son	Sound	サウンド	声音
+SettingsManual	Manuel	Manual	マニュアル	手册
+ManualMenuHint	Touches, scan et démo !	Keys, scan and demo!	キー操作とデモ！	按键、扫描和演示！
+ManualBarTitle	MANUEL	MANUAL	マニュアル	手册
+ManLibrary	BIBLIOTHÈQUE	LIBRARY	ライブラリ	资料库
+ManCatalogue	CATALOGUE	CATALOGUE	カタログ	图鉴
+ManEmulation	FICHE ET ÉMULATION	SHEET AND EMULATION	詳細とエミュレート	详情与模拟
+ManScan	SCANNER UNE FIGURINE	SCAN A FIGURE	フィギュアをスキャン	扫描手办
+ManCredits	CRÉDITS	CREDITS	クレジット	制作名单
+ManScanText1	F4 dans la bibliothèque, puis pose la figurine sur la zone NFC du Cap.	F4 in the library, then put the figure on the Cap's NFC area.	ライブラリでF4、フィギュアをCapのNFC部分に置きます。	在资料库中按F4，然后把手办放在Cap的NFC区域。
+ManScanText2	Elle est lue, copiée dans ton dossier amiibo, et TU-DU-TUUU !	It is read, copied to your amiibo folder, and TA-DA!	読み取り、amiiboフォルダに保存して、ジャジャーン！	读取后会复制到你的amiibo文件夹，还有“嘟-嘟-嘟～”的提示音！
+ManScanText3	Pas de Cap ? Réglages > Cap : on l'active avec ton mot de passe.	No Cap? Settings > Cap: enable it with your password.	Capが無い？設定 > Cap でパスワードを入力して有効化。	没有Cap？设置 > Cap：输入密码即可启用。
+ManCredits1	ZeroTag, licence MIT. Fait pour le CardputerZero.	ZeroTag, MIT licence. Made for the CardputerZero.	ZeroTag、MITライセンス。CardputerZero用。	ZeroTag，MIT许可证。为CardputerZero而作。
+ManCredits2	Code : sukoshi1507	Code: sukoshi1507	コード: sukoshi1507	代码：sukoshi1507
+ManCredits3	Merci à M5Stack, au Flipper Zero et à la scène amiibo.	Thanks to M5Stack, Flipper Zero and the amiibo scene.	M5Stack、Flipper Zero、amiiboコミュニティに感謝。	感谢M5Stack、Flipper Zero和amiibo社区。
+ManualPage	Page	Page	ページ	页
+ManualScroller	   ZEROTAG LIVE SUR CARDPUTER ZERO ... SCANNE TES AMIIBO, EMULE-LES, FAIS UN MAX DE BRUIT : TU-DU-TUUU !!!   GREETINGS A M5STACK, AU FLIPPER ZERO ET A TOUTE LA SCENE AMIIBO ...   CODE PAR SUKOSHI1507 ...   RESPECTE TES FIGURINES ET JOUE BIEN !   	   ZEROTAG LIVE ON CARDPUTER ZERO ... SCAN YOUR AMIIBO, EMULATE THEM, MAKE SOME NOISE: TA-DA !!!   GREETINGS TO M5STACK, FLIPPER ZERO AND THE WHOLE AMIIBO SCENE ...   CODE BY SUKOSHI1507 ...   RESPECT YOUR FIGURES AND HAVE FUN !   	   ZEROTAG LIVE ON CARDPUTER ZERO ... AMIIBOをスキャンしてエミュレート、ジャジャーン！！！   M5STACK、FLIPPER ZERO、そしてAMIIBOシーンの皆さんへ ...   CODE BY SUKOSHI1507 ...   フィギュアを大切に、そして楽しもう！   	   ZEROTAG LIVE ON CARDPUTER ZERO ... 扫描你的AMIIBO，模拟它们，尽情欢呼：嘟-嘟-嘟～！！！   向M5STACK、FLIPPER ZERO和整个AMIIBO圈子致敬 ...   CODE BY SUKOSHI1507 ...   爱护手办，玩得开心！   
+SettingsOnline	En ligne	Online	オンライン	联网
+OnlineHint	Interroge amiiboapi.org (liste publique)	Queries amiiboapi.org (public list)	amiiboapi.orgを参照(公開リスト)	查询amiiboapi.org（公开列表）
+SettingsUpdate	Chercher nouveautés	Check for new amiibo	新しいamiiboを確認	检查新amiibo
+UpdateHint	Entrée : télécharge la liste à jour	Enter: download the current list	Enter: 最新リストを取得	Enter：下载最新列表
+UpdateRunning	Téléchargement en cours...	Downloading...	ダウンロード中...	正在下载...
+UpdateNeedsOn	Active d'abord l'option En ligne.	Turn Online on first.	先にオンラインをオンにしてください。	请先开启联网选项。
+UpdateKnown	%d nouveaux dans le catalogue. Entrée : actualiser	%d new in the catalogue. Enter: refresh	新着%d件。Enter: 更新	图鉴中有 %d 个新品。Enter：刷新
+UpdateDone	%d nouveaux amiibo ajoutés	%d new amiibo added	新しいamiibo %d件を追加	已新增 %d 个amiibo
+UpdateUpToDate	Catalogue à jour	Catalogue is up to date	カタログは最新です	图鉴已是最新
+UpdateFailed	Échec : %s	Failed: %s	失敗: %s	失败：%s
+BadgeNew	NOUV.	NEW	新着	新品
+BadgeSoon	BIENT.	SOON	近日	即将

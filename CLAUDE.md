@@ -9,7 +9,13 @@ GPL code from pixl.js (reading it for ideas was already done once; prefer public
 - ZeroTag 1.0.0 is the RUST version and it is PUBLISHED: `main` = 5427ac6 (rust-port merged fast-forward), GitHub release v1.0.0 with
   ZeroTag_1.0.0_rev1_arm64.deb (14 MB, 954 amiibo thumbnails included by the user's decision: "free photos"), store PR
   CardputerZero/packages#785 merged automatically (CI passed). The Rust code is in `rust/` (3 crates: zerotag-core, zerotag-ui, zerotag-app);
-  the old C++ app (src/, CMakeLists.txt, cmake/) stays in the repo for reference, CMake still says 0.5.0, nobody builds it any more.
+  the old C++ app was MOVED to `legacy/` on 2026-11-24 (git mv: legacy/src, legacy/cmake, legacy/third_party, legacy/CMakeLists.txt,
+  legacy/CMakePresets.json, legacy/vcpkg*.json, legacy/deploy.sh, legacy/THIRD_PARTY.md, legacy/tools/*.cpp). It still builds
+  (`cd legacy && cmake --preset cp0-cross-clang && cmake --build build/cp0-cross-clang --config Release`, verified after the move: the
+  binary has the same size as the released 0.5.0; `legacy/.cache` is a local symlink to ../CardputerZeroApps/.cache) but is unmaintained,
+  CMake still says 0.5.0. Shared files stay at the root (assets/, config/, packaging/, screenshot/, app-builder.json, README, LICENSE);
+  the legacy CMake reaches them through ZEROTAG_ROOT. NOTE: every path like `src/...`, `tools/*.cpp`, `cmake/...`, `third_party/...`,
+  `build/...` in the older sections below means `legacy/<that path>`.
 - Everything below this section that talks about LVGL/C++ describes the legacy app; the long "Rust port" section further down has the
   details and the lessons (fb refresh vs SPI bus, fontdue OOM, rotation delay, scan, manual...).
 - Day-to-day: `cd rust && mise x rust@stable -- cargo test --release` (no rust on the host otherwise); package:
@@ -19,9 +25,11 @@ GPL code from pixl.js (reading it for ideas was already done once; prefer public
   `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=url.https://github.com/.insteadOf GIT_CONFIG_VALUE_0=git@github.com: ~/AppBuilder/czdev publish --deb X.deb`
   from the repo root (updates of an existing package merge automatically within ~1 minute).
 - Device (ask the user for the address): dpkg has zerotag 1.0.0-rev1 (the same .deb, minus the images in /usr/share: they live in
-  ~/.zerotag/images on the device), `/usr/bin/zerotag.cpp.bak` is a leftover C++ binary to delete when the user agrees.
-- Verified on hardware with the Rust version: Flipper Zero (full NTAG215 read), Nintendo Switch (the user said "test switch ok"), real scan of
-  a Bokoblin, help, online update, manual+music, keyboard. Not tested: iOS, 3DS/Wii U.
+  ~/.zerotag/images on the device). Cleaned 2026-11-24: the C++ backup binary is gone, /tmp has nothing of ours, dpkg -V/--audit clean.
+- Verified on hardware with the Rust version: Flipper Zero (full NTAG215 read), Nintendo Switch, 3DS and Wii U (the user: "tout fonctionne"),
+  real scan of a Bokoblin, help, online update, manual+music, keyboard. iOS: dropped on purpose (user decision), do not chase it.
+- i18n: the Rust strings now live in tools/i18n_strings.tsv (fr/en/ja/zh, independent of the C++ .def); `python3 tools/gen_i18n_rs.py` regenerates
+  rust/zerotag-ui/src/i18n_strings.rs.
 - Git hygiene: never put the device address in committed files (history of rust-port was rewritten once to remove it).
 
 ## State

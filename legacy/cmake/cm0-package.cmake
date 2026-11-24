@@ -34,44 +34,44 @@ install(TARGETS ${PROJECT_NAME}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/config/zerotag.conf"
+install(FILES "${ZEROTAG_ROOT}/config/zerotag.conf"
     DESTINATION "/etc"
 )
 
-install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets/audio/"
+install(DIRECTORY "${ZEROTAG_ROOT}/assets/audio/"
     DESTINATION "${CMAKE_INSTALL_DATADIR}/${APP_NAME}/audio"
     PATTERN ".DS_Store" EXCLUDE
 )
 # The amiibo thumbnails (artwork owned by Nintendo, fetched by tools/fetch_amiibo_images.py) are not part of the
 # source repository. They are packaged in the .deb whenever the folder exists on the build machine, so installed
 # apps show them; a clone without the folder builds a package without thumbnails.
-if(IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets/amiibo/images")
+if(IS_DIRECTORY "${ZEROTAG_ROOT}/assets/amiibo/images")
     set(_ZT_BUNDLE_IMAGES_DEFAULT ON)
 else()
     set(_ZT_BUNDLE_IMAGES_DEFAULT OFF)
 endif()
 option(ZEROTAG_BUNDLE_AMIIBO_IMAGES "Package assets/amiibo/images" ${_ZT_BUNDLE_IMAGES_DEFAULT})
 if(ZEROTAG_BUNDLE_AMIIBO_IMAGES)
-    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets/amiibo/"
+    install(DIRECTORY "${ZEROTAG_ROOT}/assets/amiibo/"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/${APP_NAME}/amiibo"
         PATTERN ".DS_Store" EXCLUDE
     )
 else()
-    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets/amiibo/"
+    install(DIRECTORY "${ZEROTAG_ROOT}/assets/amiibo/"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/${APP_NAME}/amiibo"
         PATTERN ".DS_Store" EXCLUDE
         PATTERN "images" EXCLUDE
     )
 endif()
-install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/"
+install(DIRECTORY "${ZEROTAG_ROOT}/assets/fonts/"
     DESTINATION "${CMAKE_INSTALL_DATADIR}/${APP_NAME}/fonts"
     PATTERN ".DS_Store" EXCLUDE
 )
-install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets/images/"
+install(DIRECTORY "${ZEROTAG_ROOT}/assets/images/"
     DESTINATION "${CMAKE_INSTALL_DATADIR}/${APP_NAME}/images"
     PATTERN ".DS_Store" EXCLUDE
 )
-install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets/images/"
+install(DIRECTORY "${ZEROTAG_ROOT}/assets/images/"
     DESTINATION "${CMAKE_INSTALL_DATADIR}/APPLaunch/share/images"
     FILES_MATCHING
     PATTERN "zerotag*.png"
@@ -88,28 +88,28 @@ if(APP_INSTALL_SYSTEMD_SERVICE)
 endif()
 
 # Helper that loads the SPI overlay the Cap needs; the user runs it with sudo after each boot.
-install(PROGRAMS "${CMAKE_CURRENT_SOURCE_DIR}/packaging/cap-setup"
+install(PROGRAMS "${ZEROTAG_ROOT}/packaging/cap-setup"
     DESTINATION "${CMAKE_INSTALL_LIBDIR}/zerotag"
 )
 
-install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/README.md"
+install(FILES "${ZEROTAG_ROOT}/README.md"
     DESTINATION "${CMAKE_INSTALL_DOCDIR}"
 )
-install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/LICENSE.txt"
+install(FILES "${ZEROTAG_ROOT}/assets/fonts/LICENSE.txt"
     DESTINATION "${CMAKE_INSTALL_DOCDIR}"
     RENAME "third-party-assets-license.txt"
 )
 
 set(CPACK_GENERATOR "DEB")
 set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")
-set(CPACK_OUTPUT_FILE_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/dist")
+set(CPACK_OUTPUT_FILE_PREFIX "${ZEROTAG_ROOT}/dist")
 set(CPACK_PACKAGE_NAME "${APP_DISPLAY_NAME}")
 set(CPACK_PACKAGE_VENDOR "${APP_MAINTAINER}")
 set(CPACK_PACKAGE_CONTACT "${APP_MAINTAINER}")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${APP_PACKAGE_DESCRIPTION}")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_FILE_NAME "${APP_DISPLAY_NAME}_${PROJECT_VERSION}_${APP_DEBIAN_REVISION}_${APP_DEBIAN_ARCHITECTURE}")
-set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/LICENSE.txt")
+set(CPACK_RESOURCE_FILE_LICENSE "${ZEROTAG_ROOT}/assets/fonts/LICENSE.txt")
 
 string(TOLOWER "${APP_DISPLAY_NAME}" APP_DEBIAN_PACKAGE_NAME)
 string(REGEX REPLACE "[^a-z0-9+.-]" "-" APP_DEBIAN_PACKAGE_NAME "${APP_DEBIAN_PACKAGE_NAME}")
