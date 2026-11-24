@@ -238,6 +238,9 @@ GPL code from pixl.js (reading it for ideas was already done once; prefer public
   `App::can_flush` keeps the display quiet while a reader field is present or was seen < 600 ms ago (the frame is drawn once it left).
   After the fix: 137 reads per session on the device. Lesson: never push frames to the display during an emulation session.
   (The UID rotation change above was a real defect too but not the main one.)
+  CONFIRMED by the user 2026-11-24: the Flipper reads the emulated Young Link with the Rust app launched from APPLaunch. Test binaries
+  removed from the device's /tmp. Still unverified with the Rust app: Switch, the WRITE path, iOS, all the keyboard screens beyond what the
+  user tried (they said "le reste fonctionne"). The device still runs the Rust build (C++ saved as /usr/bin/zerotag.cpp.bak).
 - Next: the
   embedded-graphics UI (old line kept below for reference): library_state + config, platform (spidev/gpio ST25R3916 driver, emulation state machine, keyboard via evdev, audio,
   online_update, cap_setup), then the embedded-graphics UI. The NFC parts can only be checked on the device (ask for its address).
