@@ -179,5 +179,10 @@ GPL code from pixl.js (reading it for ideas was already done once; prefer public
 - Device <device> (user sukoshi, groups spi/gpio): on 2026-11-24 only /dev/spidev0.1 existed (overlay not loaded: needs
   `sudo /usr/lib/zerotag/cap-setup`, asked the user before running it). Next step: scp the two aarch64 examples to /tmp, run
   cap-setup, probe a real tag, then emulate (Flipper/Switch) and compare with the C++ behaviour; clean /tmp afterwards.
-- Next (after the hardware check): library_state + config, platform (spidev/gpio ST25R3916 driver, emulation state machine, keyboard via evdev, audio,
+- DONE 2026-11-24 (host tests, 37 pass): `amiibo::{LibraryState, Library, read_image, write_image}`, `config` (INI, save_setting keeps
+  the rest of the file), `online_update` (curl via Command, `--ignored online` test downloads the real list), `cap_setup`
+  (sudo -S via Command + os_pipe; the wrong-password path IS tested here with a fake `sh` helper), `nfc::EmulationSession`
+  (worker thread, owns the Chip and gives it back in `finish`, autosave snapshot).
+- Next: platform keyboard (evdev, see linux_input.cpp keymap), audio, device_status, screenshot_service; then the
+  embedded-graphics UI (old line kept below for reference): library_state + config, platform (spidev/gpio ST25R3916 driver, emulation state machine, keyboard via evdev, audio,
   online_update, cap_setup), then the embedded-graphics UI. The NFC parts can only be checked on the device (ask for its address).

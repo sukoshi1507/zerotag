@@ -50,7 +50,7 @@ pub struct Chip<B: Bus> {
     pub(crate) bus: B,
     identity: u8,
     // Dropped after `bus`: releases the Cap power rail once the chip is closed.
-    _guard: Option<Box<dyn Any>>,
+    _guard: Option<Box<dyn Any + Send>>,
 }
 
 impl<B: Bus> Drop for Chip<B> {
@@ -61,7 +61,7 @@ impl<B: Bus> Drop for Chip<B> {
 
 impl<B: Bus> Chip<B> {
     /// Checks the IC identity register. `guard` is kept alive for the life of the chip (power rail).
-    pub fn open(mut bus: B, guard: Option<Box<dyn Any>>) -> Result<Self, Error> {
+    pub fn open(mut bus: B, guard: Option<Box<dyn Any + Send>>) -> Result<Self, Error> {
         let tx = [OP_READ_REGISTER | REG_IC_IDENTITY, 0];
         let mut rx = [0u8; 2];
         bus.transfer(&tx, &mut rx)?;

@@ -10,8 +10,10 @@
 mod chip;
 mod emulation;
 mod hw;
+mod session;
 pub mod regs;
 
 pub use chip::{Bus, Chip, Error, Tag};
 pub use emulation::{handle_type2, EmulationOptions, EmulationStats, Reply};
+pub use session::{EmulationSession, SessionResult};
 pub use hw::{open_cap, CapConfig, SpiBus};
