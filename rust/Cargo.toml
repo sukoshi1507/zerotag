@@ -3,6 +3,12 @@ resolver = "2"
 members = ["zerotag-core", "zerotag-ui", "zerotag-app"]
 
 [workspace.package]
-version = "0.6.0-dev"
+version = "0.6.0"
 edition = "2021"
 license = "MIT"
+
+[profile.release]
+# Smaller binary for the device (352 MB of RAM, a small SD card): link-time optimisation and no symbols.
+lto = true
+codegen-units = 1
+strip = true

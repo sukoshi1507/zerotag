@@ -258,6 +258,12 @@ GPL code from pixl.js (reading it for ideas was already done once; prefer public
   "Manuel", Left/Right pages with blip, music started/stopped in `go()`, redraw every 50 ms). Measured on the device: 2.3 % CPU and 7 MB RSS
   while the manual and its music run (the C++ app was ~34 %); no aplay left behind. The user confirmed the demo runs with its music.
   The Rust app now has every screen of the C++ one: library, catalogue, facets, detail, emulation, settings, help, manual, scan, cap setup.
+- Debian package of the Rust build: `packaging/build-rust-deb.sh` (workspace version 0.6.0, `[profile.release]` lto + strip, 1.9 MB binary,
+  .deb 784 KB: /usr/bin/zerotag, /etc/zerotag.conf (conffile), cap-setup, amiibo_db.json, APPLaunch .desktop + icons, README, copyright;
+  no maintainer scripts, no thumbnails unless --with-images; Depends fonts-noto-cjk, Recommends curl alsa-utils sudo). Same package name
+  `zerotag`, 0.6.0-rev1 > 0.5.0-rev1, so it upgrades the C++ one. NOT yet installed with dpkg on the device (the device still has the
+  hand-copied binary + zerotag.cpp.bak); app-builder.json still says 0.5.0 and the store text is unchanged: a store release of the Rust
+  version is the user's decision. Switch emulation verified by the user with the Rust build.
 - Next: the
   embedded-graphics UI (old line kept below for reference): library_state + config, platform (spidev/gpio ST25R3916 driver, emulation state machine, keyboard via evdev, audio,
   online_update, cap_setup), then the embedded-graphics UI. The NFC parts can only be checked on the device (ask for its address).

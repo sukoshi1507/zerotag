@@ -100,6 +100,23 @@ Host tools (built on the same configure): `zerotag_amiibo_gen`, `zerotag_amiibo_
 amiibo code (`zerotag_amiibo_library_test`, which needs your keys: `tools/amiibo_library_test.cpp`).
 `tools/st25r3916_emulate.cpp` and `tools/st25r3916_probe.cpp` are command-line hardware tests for the Cap.
 
+### Rust version (branch `rust-port`)
+
+A Rust port lives in `rust/` (same features, plus Simplified Chinese): `zerotag-core` (amiibo images and signatures with
+RustCrypto, catalogue, ST25R3916 driver and emulation, scan, config, audio), `zerotag-ui` (a small software renderer, no GUI toolkit)
+and `zerotag-app` (the `zerotag` binary). It draws on the framebuffer and needs the Noto Sans CJK fonts of the device
+(`fonts-noto-cjk`). Statically linked, no library to install.
+
+```shell
+cd rust && cargo test                      # 100+ tests, no hardware needed (they use a fake chip)
+packaging/build-rust-deb.sh                # cross-build + dist/ZeroTag_<version>_rev1_arm64.deb (no thumbnails)
+packaging/build-rust-deb.sh --with-images  # private build with the amiibo thumbnails
+```
+
+The cross build needs the `aarch64-unknown-linux-gnu` target and `aarch64-linux-gnu-gcc` (see `rust/.cargo/config.toml`).
+Test tools: `cargo build --release --examples` gives `st25r_probe`, `st25r_emulate`, `amiibo_gen`, `amiibo_verify`,
+`amiibo_rotate`; `zerotag --png out.png --screen library|catalogue|settings|detail|help|manual|scan` renders a screen to a file.
+
 ## How it works
 
 - `packaging/cap-setup`: the root helper that loads the SPI overlay (`spi0-spidev2-gpio22-overlay`).
