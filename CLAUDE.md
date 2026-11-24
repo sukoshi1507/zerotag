@@ -176,7 +176,7 @@ GPL code from pixl.js (reading it for ideas was already done once; prefer public
   and shredded after use): read by the Flipper and recognised by amiitool as Zelda, 548 reads served in 45 s: Rust signatures +
   Rust emulation validated end to end. Still to check: Switch, WRITE path, iOS. Test binaries removed from the device's /tmp
   (the SPI overlay stays loaded until the next reboot).
-- Device <device> (user sukoshi, groups spi/gpio): on 2026-11-24 only /dev/spidev0.1 existed (overlay not loaded: needs
+- Device (address: ask the user each session; login has groups spi/gpio): on 2026-11-24 only /dev/spidev0.1 existed (overlay not loaded: needs
   `sudo /usr/lib/zerotag/cap-setup`, asked the user before running it). Next step: scp the two aarch64 examples to /tmp, run
   cap-setup, probe a real tag, then emulate (Flipper/Switch) and compare with the C++ behaviour; clean /tmp afterwards.
 - DONE 2026-11-24 (host tests, 37 pass): `amiibo::{LibraryState, Library, read_image, write_image}`, `config` (INI, save_setting keeps
@@ -216,7 +216,7 @@ GPL code from pixl.js (reading it for ideas was already done once; prefer public
 - Device test 2026-11-24: the Rust UI draws correctly on fb0 with the user's 6 real backups (screenshot via ffmpeg fbdev). Launched over
   ssh no key reached it (3 keyboard devices opened but APPLaunch owns the keys) and the launcher's status icons draw over the top-right
   corner: to test the keyboard the app must be started BY APPLaunch (its .desktop runs /usr/bin/zerotag). Nothing was installed.
-- !! Device state since 2026-11-24 (user agreed): /usr/bin/zerotag on <device> is the RUST build (2875816 bytes); the published C++ 0.5.0
+- !! Device state since 2026-11-24 (user agreed): /usr/bin/zerotag on the device is the RUST build (2875816 bytes); the published C++ 0.5.0
   binary is saved as /usr/bin/zerotag.cpp.bak (sha256 eab75d77fd12c9a70856f7a38fef6989b3b2c1e82a31b4508be4d6d7801dc726). Restore:
   `sudo install -m 755 /usr/bin/zerotag.cpp.bak /usr/bin/zerotag` (then remove the .bak). dpkg will see zerotag as modified until restored
   or reinstalled. Waiting for the user's feedback on keys / display / speed when launched from APPLaunch.
