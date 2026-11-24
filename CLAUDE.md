@@ -169,6 +169,10 @@ GPL code from pixl.js (reading it for ideas was already done once; prefer public
   20 tests pass on the host. Examples `st25r_probe` / `st25r_emulate` (same CLI as tools/). Cross build:
   `cd rust && mise x rust@stable -- cargo build --release --target aarch64-unknown-linux-gnu --examples` (static, linker
   aarch64-linux-gnu-gcc in rust/.cargo/config.toml; the getaddrinfo/getpwuid linker warnings are harmless).
+- Verified on the device 2026-11-24 (Rust, static aarch64 examples): identity 0x2A rev 2; probe on a real amiibo gives the same UID,
+  GET_VERSION, pages and the same 540-byte dump as the C++ probe (cmp identical); `st25r_emulate --blank` read by a Flipper:
+  field/selected detected, 414 reads served in 45 s. detect_tag rejects an all-zero UID (a spurious answer seen once with the
+  amiibo not in place). Still to check: an amiibo image on the Flipper/Switch, WRITE path, iOS.
 - Device <device> (user sukoshi, groups spi/gpio): on 2026-11-24 only /dev/spidev0.1 existed (overlay not loaded: needs
   `sudo /usr/lib/zerotag/cap-setup`, asked the user before running it). Next step: scp the two aarch64 examples to /tmp, run
   cap-setup, probe a real tag, then emulate (Flipper/Switch) and compare with the C++ behaviour; clean /tmp afterwards.

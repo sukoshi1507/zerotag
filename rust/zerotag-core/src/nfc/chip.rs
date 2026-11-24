@@ -424,6 +424,10 @@ impl<B: Bus> Chip<B> {
             tag.uid.extend_from_slice(if cascade { &id[1..4] } else { &id[0..4] });
             tag.sak = sak;
             if sak & 0x04 == 0 {
+                // An all-zero UID is a spurious answer (RXE with an empty/stale FIFO), not a tag.
+                if tag.uid.iter().all(|&b| b == 0) {
+                    return Err("no tag".into());
+                }
                 return Ok(tag); // cascade bit clear: UID complete
             }
         }
