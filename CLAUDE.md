@@ -164,5 +164,13 @@ GPL code from pixl.js (reading it for ideas was already done once; prefer public
   Rust gen -> C++ verify, Rust rotate_uid -> C++ verify, all valid. The C++ tools were built in the scratchpad against
   /usr/lib/libmbedcrypto.so.3.6.7 and the headers in ../CardputerZeroApps/.cache/cp0-deps/mbedtls-src/include.
   Rust examples: `cargo build --release --examples` gives amiibo_gen / amiibo_verify / amiibo_rotate (same CLI as tools/).
-- Next: library_state + config, platform (spidev/gpio ST25R3916 driver, emulation state machine, keyboard via evdev, audio,
+- DONE 2026-11-24 (not yet run on the device): `nfc` module = ST25R3916 driver generic over a `Bus` trait (spidev + gpiocdev in
+  `nfc/hw.rs`, mock bus in the tests), reader mode + Type 2, emulation state machine (`handle_type2` is a pure tested function).
+  20 tests pass on the host. Examples `st25r_probe` / `st25r_emulate` (same CLI as tools/). Cross build:
+  `cd rust && mise x rust@stable -- cargo build --release --target aarch64-unknown-linux-gnu --examples` (static, linker
+  aarch64-linux-gnu-gcc in rust/.cargo/config.toml; the getaddrinfo/getpwuid linker warnings are harmless).
+- Device <device> (user sukoshi, groups spi/gpio): on 2026-11-24 only /dev/spidev0.1 existed (overlay not loaded: needs
+  `sudo /usr/lib/zerotag/cap-setup`, asked the user before running it). Next step: scp the two aarch64 examples to /tmp, run
+  cap-setup, probe a real tag, then emulate (Flipper/Switch) and compare with the C++ behaviour; clean /tmp afterwards.
+- Next (after the hardware check): library_state + config, platform (spidev/gpio ST25R3916 driver, emulation state machine, keyboard via evdev, audio,
   online_update, cap_setup), then the embedded-graphics UI. The NFC parts can only be checked on the device (ask for its address).
