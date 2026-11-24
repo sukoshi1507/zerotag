@@ -189,6 +189,17 @@ GPL code from pixl.js (reading it for ideas was already done once; prefer public
 - DONE 2026-11-24: `audio` (same synthesis, aplay via Command; run on the device with `examples/audio_demo`: exits cleanly, no aplay
   left behind; whether it was audible is for the user to confirm), `device_status` (sysfs roots injectable, tested with fake trees),
   `screenshot` (PNG encoder for an RGBA buffer, ~/Pictures/Screenshots; the capture itself belongs to the UI layer). 54 host tests.
+- Audio confirmed audible on the device by the user (2026-11-24, after checking PipeWire routing: default sink = ES8389 card).
+- UI started 2026-11-24 in `rust/zerotag-ui` (software renderer, no toolkit): `Canvas` (0xRRGGBB, RGB565 export for the 640-byte-stride
+  fb0 of the panel), `Fonts` (fontdue + the SAME system Noto Sans CJK Regular/Medium the C++ app uses, so the look matches; the
+  pixel-font idea is postponed, the Famicom feel comes from the frame/cursor/colours), `widgets::Painter` (frame, bar, footer, search
+  field, list rows, scrollbar, star/triforce/cursor with the C++ coordinates) and `screens::catalogue`. Dev loop without the device:
+  `cargo run --release -p zerotag-ui --example render_catalogue -- ../assets/amiibo/amiibo_db.json zelda_ fr out.png`, then compare with
+  screenshot/*.png (the catalogue render is within ~1 px of the C++ one). Not done yet: thumbnails, the other screens, framebuffer output,
+  the app loop. Concern to measure on the device: loading a Noto CJK .ttc with fontdue takes ~2 s per face on the host (release).
+- Simplified Chinese added (user request) to the Rust port only: `Lang::Zh` (code "zh"), strings in tools/i18n_zh_hans.tsv merged by
+  tools/gen_i18n_rs.py into rust/zerotag-ui/src/i18n_strings.rs (regenerate with `python3 tools/gen_i18n_rs.py`; it fails when a string
+  is missing or a placeholder differs). Font face 2 (SC) of the .ttc for zh, face 0 (JP) for fr/en/ja. The C++ app still has 3 languages.
 - Next: the
   embedded-graphics UI (old line kept below for reference): library_state + config, platform (spidev/gpio ST25R3916 driver, emulation state machine, keyboard via evdev, audio,
   online_update, cap_setup), then the embedded-graphics UI. The NFC parts can only be checked on the device (ask for its address).

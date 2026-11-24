@@ -1,0 +1,11 @@
+[package]
+name = "zerotag-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "ZeroTag user interface: software renderer for the 320x170 Famicom-style screens"
+
+[dependencies]
+zerotag-core = { path = "../zerotag-core" }
+fontdue = "0.9"
+png = "0.17"

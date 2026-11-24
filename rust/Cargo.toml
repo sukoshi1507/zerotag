@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["zerotag-core"]
+members = ["zerotag-core", "zerotag-ui"]
 
 [workspace.package]
 version = "0.6.0-dev"

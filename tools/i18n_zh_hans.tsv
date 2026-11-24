@@ -1,0 +1,186 @@
+# Name<TAB>Simplified Chinese. Merged by tools/gen_i18n_rs.py (placeholders must match the other languages).
+LibraryTitle	资料库
+CatalogueTitle	图鉴
+EmulationTitle	模拟
+SetupTitle	设置
+SettingsLanguage	语言
+LabelFile	文件
+NotFound	未找到
+KeyUpDown	↑↓
+KeyEnter	ENTER
+KeyTab	TAB
+KeyEsc	ESC
+KeyDel	DEL
+HintChoose	选择
+HintOpen	打开
+HintCatalogue	图鉴
+HintLibrary	资料库
+HintState	状态
+HintLanguage	语言
+HintCreate	创建
+HintBack	返回
+HintEmulate	模拟
+HintNewUid	新UID
+HintDelete	删除
+HintRecheck	重新检测
+HintStop	停止
+HintSettings	设置
+HintChange	更改
+HintFilter	筛选
+FilterPlaceholder	输入以筛选…
+LibraryEmpty	资料库中没有amiibo。
+NoResult	没有结果。
+LibraryHowTo	Tab：图鉴，Enter创建amiibo。
+KeysMissingF1	未找到密钥：F1
+SigUnchecked	签名：未检查
+SigValid	签名：有效
+SigInvalid	签名：无效
+SearchPlaceholder	搜索角色…
+CatalogueUnreadable	无法读取图鉴：
+Owned	已拥有
+NoteKeysTitle	未找到密钥
+NoteKeysBody	无法创建：请见F1。
+NoteOwnedTitle	已拥有
+NoteOwnedBody	按Enter再创建一个副本。
+NoteNewTitle	尚未拥有
+NoteNewBody	按Enter创建带签名的空白镜像。
+FacetsTitle	筛选方式
+FacetSeries	amiibo系列
+FacetGame	游戏
+FacetType	类型
+FacetValuesCount	%zu 个值
+FacetChip	%s：%s
+UnknownCharacter	图鉴中没有此角色
+ButtonEmulate	ENTER  模拟
+ButtonReset	R  重置
+ButtonResetAsk	R ?
+ButtonDelete	DEL
+ButtonDeleteAsk	DEL ?
+EmuWaiting	正在等待读卡器…
+EmuDetected	检测到读卡器…
+EmuConnected	读卡器已连接
+EmuWaitHelp	游戏提示扫描时，请将Cap贴近主机的NFC区域。
+EmuConnHelp	加载完成前请保持Cap不动。
+EmuReads	读取
+EmuWrites	写入
+EmuWritesPending	%u·待保存
+EmuDuration	时长
+EmuFooterNote	游戏的写入会在停止时保存。
+EmuStopButton	ESC  停止
+EmuFailed	无法模拟
+EmuInterrupted	模拟已中断
+ErrSpi	缺少SPI端口：请运行 sudo /usr/lib/zerotag/cap-setup
+ErrPerms	无权使用Cap（需要spi和gpio用户组）。
+ErrGeneric	请检查Cap后重试（F1：状态）。
+SetupCap	Cap CC1101 – NFC
+SetupNotChecked	未检测 (R)
+SetupCapDetected	检测到ST25R3916，版本 %d
+SetupFolder	amiibo文件夹
+SetupFolderInfo	%s·%zu 个备份·图鉴共 %zu 个角色
+SetupFolderAbsent	文件夹不存在：%s（创建第一个amiibo时自动创建）
+SetupKeysOk	已找到密钥
+SetupKeysHelp	请将key_retail.bin复制到 %s
+BannerFailed	失败：%s
+BannerCreated	已创建：%s
+BannerDeleted	已删除：%s
+BannerCantDelete	无法删除
+BannerResetDone	已用新UID重置
+BannerSaved	写入已保存到 %s
+BannerSaveFailed	无法保存：%s
+BannerCapture	截图：%s
+BannerCaptureFailed	截图失败
+BannerConfirmReset	再按一次R：将清除游戏存档
+BannerConfirmDelete	再按一次Del：将删除文件
+BannerLanguage	语言：%s
+HintRotation	轮换
+ChipRotation	UID轮换
+ValueOn	开
+ValueOff	关
+SettingsRotation	UID轮换
+BannerRotationOn	UID轮换：开
+BannerRotationOff	UID轮换：关
+BannerAutosaved	已自动保存
+EmuRotations	轮换次数
+HelpTitle	帮助
+HelpMenuHint	Fn+H：随处可用的帮助
+HelpChoose	在列表中移动
+HelpOpen	打开详情
+HelpTypeFilter	输入以筛选列表
+HelpTypeSearch	输入以搜索角色
+HelpToCatalogue	前往图鉴
+HelpToLibrary	返回资料库
+HelpSettings	打开设置
+HelpHoldQuit	长按退出
+HelpCreate	创建带签名的空白amiibo
+HelpClearBack	清除输入和筛选，然后返回
+HelpFilter	按系列、游戏或类型筛选
+HelpFacetPick	先选分类，再选值
+HelpEmulate	模拟：将Cap贴近主机
+HelpNewUid	用新UID重置（按两次）
+HelpDelete	删除文件（按两次）
+HelpRotation	每次读取后使用新UID
+HelpBack	返回
+HelpStopSave	停止并保存
+HelpAutosave	写入也会自动保存。
+HelpChange	更改数值
+CapSetupTitle	启用NFC Cap
+CapSetupText	SPI端口尚未加载。请输入sudo密码以启用（如果sudo不需要密码，直接按Enter）。
+CapPassword	密码
+CapBusy	正在启用…
+CapDone	Cap已启用
+CapBadPassword	密码被拒绝，或sudo不可用
+CapFailed	cap-setup失败：%s
+HintValidate	确认
+HintSkip	跳过
+TabAll	全部
+TabFavorites	收藏
+TabRecent	最近
+HintFavorite	收藏
+HintTabs	标签页
+HelpFavTabs	收藏 / 标签页 (F3)
+EmptyFavorites	没有收藏。在amiibo上按F2即可添加。
+EmptyRecent	最近没有模拟记录。
+BannerFavAdded	已添加收藏：%s
+BannerFavRemoved	已取消收藏：%s
+ScanTitle	扫描
+ScanOpening	正在打开Cap…
+ScanWaiting	请靠近手办
+ScanWaitHelp	将amiibo放在Cap的NFC区域并保持不动。
+ScanReading	正在读取…
+ScanKeepHelp	读取完成前请保持手办不动。
+ScanProgress	%d / %d 页
+ScanSaved	amiibo已保存
+ScanFailed	无法扫描
+ScanNotNtag	此标签不是NTAG215（amiibo）。
+ScanReadFailed	读取在第 %d 页中断：请重新放好手办。
+BannerScanned	已扫描：%s
+HelpScan	扫描真实手办
+SettingsSound	声音
+SettingsManual	手册
+ManualMenuHint	按键、扫描和演示！
+ManualBarTitle	手册
+ManLibrary	资料库
+ManCatalogue	图鉴
+ManEmulation	详情与模拟
+ManScan	扫描手办
+ManCredits	制作名单
+ManScanText1	在资料库中按F4，然后把手办放在Cap的NFC区域。
+ManScanText2	读取后会复制到你的amiibo文件夹，还有“嘟-嘟-嘟～”的提示音！
+ManScanText3	没有Cap？设置 > Cap：输入密码即可启用。
+ManCredits1	ZeroTag，MIT许可证。为CardputerZero而作。
+ManCredits2	代码：sukoshi1507
+ManCredits3	感谢M5Stack、Flipper Zero和amiibo社区。
+ManualPage	页
+ManualScroller	   ZEROTAG LIVE ON CARDPUTER ZERO ... 扫描你的AMIIBO，模拟它们，尽情欢呼：嘟-嘟-嘟～！！！   向M5STACK、FLIPPER ZERO和整个AMIIBO圈子致敬 ...   CODE BY SUKOSHI1507 ...   爱护手办，玩得开心！   
+SettingsOnline	联网
+OnlineHint	查询amiiboapi.org（公开列表）
+SettingsUpdate	检查新amiibo
+UpdateHint	Enter：下载最新列表
+UpdateRunning	正在下载...
+UpdateNeedsOn	请先开启联网选项。
+UpdateKnown	图鉴中有 %d 个新品。Enter：刷新
+UpdateDone	已新增 %d 个amiibo
+UpdateUpToDate	图鉴已是最新
+UpdateFailed	失败：%s
+BadgeNew	新品
+BadgeSoon	即将
