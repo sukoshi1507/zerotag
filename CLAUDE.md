@@ -183,6 +183,9 @@ GPL code from pixl.js (reading it for ideas was already done once; prefer public
   the rest of the file), `online_update` (curl via Command, `--ignored online` test downloads the real list), `cap_setup`
   (sudo -S via Command + os_pipe; the wrong-password path IS tested here with a fake `sh` helper), `nfc::EmulationSession`
   (worker thread, owns the Chip and gives it back in `finish`, autosave snapshot).
-- Next: platform keyboard (evdev, see linux_input.cpp keymap), audio, device_status, screenshot_service; then the
+- DONE 2026-11-24: `input` (evdev key table incl. the Sym layer, checked against /usr/include/linux/input-event-codes.h in a test;
+  non-blocking `Keypad` reader, keyboard detection through /sys/class/input/eventN/device/capabilities/key instead of an ioctl;
+  `KeyRouter` = down / long press 700 ms / up). 44 host tests. NOT yet tried on the device (APPLaunch owns /dev/input/event3).
+- Next: audio, device_status, screenshot_service; then the
   embedded-graphics UI (old line kept below for reference): library_state + config, platform (spidev/gpio ST25R3916 driver, emulation state machine, keyboard via evdev, audio,
   online_update, cap_setup), then the embedded-graphics UI. The NFC parts can only be checked on the device (ask for its address).
