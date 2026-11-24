@@ -216,6 +216,10 @@ GPL code from pixl.js (reading it for ideas was already done once; prefer public
 - Device test 2026-11-24: the Rust UI draws correctly on fb0 with the user's 6 real backups (screenshot via ffmpeg fbdev). Launched over
   ssh no key reached it (3 keyboard devices opened but APPLaunch owns the keys) and the launcher's status icons draw over the top-right
   corner: to test the keyboard the app must be started BY APPLaunch (its .desktop runs /usr/bin/zerotag). Nothing was installed.
+- !! Device state since 2026-11-24 (user agreed): /usr/bin/zerotag on <device> is the RUST build (2875816 bytes); the published C++ 0.5.0
+  binary is saved as /usr/bin/zerotag.cpp.bak (sha256 eab75d77fd12c9a70856f7a38fef6989b3b2c1e82a31b4508be4d6d7801dc726). Restore:
+  `sudo install -m 755 /usr/bin/zerotag.cpp.bak /usr/bin/zerotag` (then remove the .bak). dpkg will see zerotag as modified until restored
+  or reinstalled. Waiting for the user's feedback on keys / display / speed when launched from APPLaunch.
 - Next: the
   embedded-graphics UI (old line kept below for reference): library_state + config, platform (spidev/gpio ST25R3916 driver, emulation state machine, keyboard via evdev, audio,
   online_update, cap_setup), then the embedded-graphics UI. The NFC parts can only be checked on the device (ask for its address).
