@@ -185,6 +185,24 @@ impl Painter<'_> {
         }
     }
 
+    /// A row of the settings / facet lists: highlight and cursor when selected, title, optional detail line.
+    /// `rh` is the row height (30); `title_dy` and `detail` placement follow the C++ screens.
+    pub fn text_right(&mut self, s: &str, px: u32, bold: bool, color: Rgb, right_margin: i32, y: i32) {
+        let w = self.fonts.width(s, px, bold);
+        self.text(s, px, bold, color, SCREEN_W - right_margin - w, y, None);
+    }
+
+    /// Thin scroll bar on the right edge of the 4-row, 30 px lists (settings, facets).
+    pub fn edge_bar(&mut self, count: usize, first: i32, rh: i32) {
+        if count <= ROWS as usize {
+            return;
+        }
+        let track = ROWS * rh;
+        let bar_h = track * ROWS / count as i32;
+        let bar_y = CONTENT_TOP + 3 + (track - bar_h) * first / (count as i32 - ROWS);
+        self.rect(SCREEN_W - INSET - 4, bar_y, 2, bar_h, BORDER);
+    }
+
     /// One row of the catalogue / library list.
     #[allow(clippy::too_many_arguments)]
     pub fn list_row(&mut self, y: i32, selected: bool, id: &str, name: &str, sub: &str, badge: &str, favorite: bool) {

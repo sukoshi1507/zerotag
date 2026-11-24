@@ -197,8 +197,11 @@ GPL code from pixl.js (reading it for ideas was already done once; prefer public
   pixel-font idea is postponed, the Famicom feel comes from the frame/cursor/colours), `widgets::Painter` (frame, bar, footer, search
   field, list rows, scrollbar, star/triforce/cursor with the C++ coordinates) and `screens::catalogue`. Dev loop without the device:
   `cargo run --release -p zerotag-ui --example render_catalogue -- ../assets/amiibo/amiibo_db.json zelda_ fr out.png`, then compare with
-  screenshot/*.png (the catalogue render is within ~1 px of the C++ one). Not done yet: thumbnails, the other screens, framebuffer output,
-  the app loop. Font start-up cost is solved (see above).
+  screenshot/*.png (the catalogue render is within ~1 px of the C++ one). Screens done (each rendered to PNG and compared with the C++ screenshots, ~1 px): catalogue, library, detail, emulation (AA rings),
+  settings, facets; thumbnails (PNG decode + area-averaged scaling, cached, read from assets/amiibo/images or ~/.zerotag/images).
+  Examples: render_catalogue, render_screens (library/detail/emulation/settings/facets). Not done yet: help, manual (demoscene), Cap
+  setup, scan, the password field; framebuffer output (fb0 = panel-mipi-dbid, 320x170, RGB565, stride 640: `Canvas::to_rgb565`);
+  the app loop (state machine, key handling, worker threads) that ties core + ui + input together. Font start-up cost is solved (see above).
 - Simplified Chinese added (user request) to the Rust port only: `Lang::Zh` (code "zh"), strings in tools/i18n_zh_hans.tsv merged by
   tools/gen_i18n_rs.py into rust/zerotag-ui/src/i18n_strings.rs (regenerate with `python3 tools/gen_i18n_rs.py`; it fails when a string
   is missing or a placeholder differs). Font face 2 (SC) of the .ttc for zh, face 0 (JP) for fr/en/ja. The C++ app still has 3 languages.

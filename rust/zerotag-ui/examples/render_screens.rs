@@ -3,6 +3,9 @@
 // (the thumbnails are read from <amiibo_db dir>/images when present)
 use zerotag_core::amiibo::Database;
 use zerotag_ui::screens::detail::{self, Confirm, DetailView};
+use zerotag_ui::screens::emulation::{self, EmulationView};
+use zerotag_ui::screens::facets::{self, FacetRow, FacetsView};
+use zerotag_ui::screens::settings::{self, toggle_value, SettingsRow, SettingsView, Status};
 use zerotag_ui::screens::library::{self, LibraryRow, LibraryView, Signature, Tab};
 use zerotag_ui::thumbs::Thumbnails;
 use zerotag_ui::widgets::Painter;
@@ -81,4 +84,44 @@ fn main() {
     };
     detail::render(&mut Painter { canvas: &mut canvas, fonts: &fonts, thumbs: Some(&thumbs) }, &view);
     save(&canvas, &format!("{}/detail_{}.png", a[2], a[1]));
+
+    let view = EmulationView {
+        lang,
+        item_name: &link.name,
+        entry_id: &link.id,
+        running: true,
+        field: true,
+        selected: true,
+        error: None,
+        reads: 143,
+        writes: 2,
+        rotations: 0,
+        seconds: 75,
+        uid: "04:E1:7B:16:71:2F:06",
+        uid_rotation: false,
+        banner: None,
+        battery: Some((83, false)),
+    };
+    emulation::render(&mut Painter { canvas: &mut canvas, fonts: &fonts, thumbs: Some(&thumbs) }, &view);
+    save(&canvas, &format!("{}/emulation_{}.png", a[2], a[1]));
+
+    let rows = vec![
+        SettingsRow { title: "Langue".into(), value: format!("< {} >", lang.native_name()), ..Default::default() },
+        SettingsRow { title: "Rotation d'UID".into(), detail: "Nouvel UID après chaque lecture".into(), value: toggle_value(lang, false), ..Default::default() },
+        SettingsRow { title: "Cap CC1101 – NFC".into(), detail: "ST25R3916 détecté, révision 2".into(), status: Some(Status::Ok), ..Default::default() },
+        SettingsRow { title: "Clés trouvées".into(), detail: "~/.zerotag/key_retail.bin".into(), status: Some(Status::Ok), ..Default::default() },
+        SettingsRow { title: "Dossier des amiibo".into(), detail: "~/amiibo – 6 sauvegardes – 954 personnages".into(), status: Some(Status::Warning), ..Default::default() },
+    ];
+    let view = SettingsView { lang, rows: &rows, selected: 1, top: 0, banner: None, battery: Some((83, false)) };
+    settings::render(&mut Painter { canvas: &mut canvas, fonts: &fonts, thumbs: None }, &view);
+    save(&canvas, &format!("{}/settings_{}.png", a[2], a[1]));
+
+    let rows = vec![
+        FacetRow { title: "Série amiibo".into(), right: "77 valeurs".into() },
+        FacetRow { title: "Jeu".into(), right: "41 valeurs".into() },
+        FacetRow { title: "Type".into(), right: "5 valeurs".into() },
+    ];
+    let view = FacetsView { lang, browsing: None, rows: &rows, selected: 0, top: 0, banner: None, battery: Some((83, false)) };
+    facets::render(&mut Painter { canvas: &mut canvas, fonts: &fonts, thumbs: None }, &view);
+    save(&canvas, &format!("{}/facets_{}.png", a[2], a[1]));
 }

@@ -70,6 +70,25 @@ impl Canvas {
         }
     }
 
+    /// A filled anti-aliased disc centred on (cx, cy) (pixel-centre coordinates), radius `r`.
+    pub fn fill_circle(&mut self, cx: f32, cy: f32, r: f32, c: Rgb) {
+        let (x0, x1) = ((cx - r - 1.0).floor() as i32, (cx + r + 1.0).ceil() as i32);
+        let (y0, y1) = ((cy - r - 1.0).floor() as i32, (cy + r + 1.0).ceil() as i32);
+        for y in y0..=y1 {
+            for x in x0..=x1 {
+                let d = ((x as f32 + 0.5 - cx).powi(2) + (y as f32 + 0.5 - cy).powi(2)).sqrt();
+                let cover = (r + 0.5 - d).clamp(0.0, 1.0);
+                self.blend(x, y, c, (cover * 255.0).round() as u8);
+            }
+        }
+    }
+
+    /// A circle with a border of `bw` pixels inside its radius (LVGL's rounded box with radius = half the size).
+    pub fn ring(&mut self, cx: f32, cy: f32, r: f32, bw: f32, fill: Rgb, border: Rgb) {
+        self.fill_circle(cx, cy, r, border);
+        self.fill_circle(cx, cy, r - bw, fill);
+    }
+
     pub fn to_rgba(&self) -> Vec<u8> {
         self.px.iter().flat_map(|&c| [(c >> 16) as u8, (c >> 8) as u8, c as u8, 255]).collect()
     }
@@ -120,6 +139,19 @@ mod tests {
         assert_eq!(c.get(1, 1), Some(0x111111));
         assert_eq!(c.get(4, 4), Some(0x111111));
         assert_eq!(c.get(2, 1), Some(0xFFFFFF));
+    }
+
+    #[test]
+    fn circles_are_round_and_anti_aliased() {
+        let mut c = Canvas::new(21, 21, 0);
+        c.ring(10.5, 10.5, 8.0, 2.0, 0x00FF00, 0xFF0000);
+        assert_eq!(c.get(10, 10), Some(0x00FF00)); // centre: fill
+        assert_eq!(c.get(10, 3), Some(0xFF0000)); // 7 px above the centre: on the border
+        assert_eq!(c.get(0, 0), Some(0)); // outside
+        assert_eq!(c.get(10, 2).map(|p| p >> 16 & 0xFF).map(|r| r > 0 && r < 255), Some(true)); // soft edge
+        // symmetric
+        assert_eq!(c.get(3, 10), c.get(17, 10));
+        assert_eq!(c.get(10, 3), c.get(10, 17));
     }
 
     #[test]
