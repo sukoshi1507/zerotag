@@ -1,0 +1,5 @@
+# Cross build for the CardputerZero: `cargo build --release --target aarch64-unknown-linux-gnu --examples`
+# Statically linked, so the host/device libc versions do not matter.
+[target.aarch64-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"
+rustflags = ["-C", "target-feature=+crt-static"]
