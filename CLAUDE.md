@@ -31,6 +31,9 @@ GPL code from pixl.js (reading it for ideas was already done once; prefer public
 - i18n: the Rust strings now live in tools/i18n_strings.tsv (fr/en/ja/zh, independent of the C++ .def); `python3 tools/gen_i18n_rs.py` regenerates
   rust/zerotag-ui/src/i18n_strings.rs.
 - Git hygiene: never put the device address in committed files (history of rust-port was rewritten once to remove it).
+- Cleanup done 2026-11-24: branch rust-port deleted (local + GitHub, it was merged), the local backup branch and filter-branch's refs/original
+  removed and the repo gc'd (no trace of the device address in any ref); stale build/, old C++ debs and dist staging removed; rust/target (1.5 GB)
+  kept for fast rebuilds (`cargo clean` in rust/ frees it). Only `main` exists, tags v0.3.4 v0.4.0 v0.5.0 (C++) and v1.0.0 (Rust).
 
 ## State
 - Template renamed to pixljszero, then to ZeroTag (ids `zerotag`); framebuffer found via /proc/fb (`fb_st7789v`), not /dev/fb0.
