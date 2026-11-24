@@ -6,6 +6,7 @@ use zerotag_ui::screens::detail::{self, Confirm, DetailView};
 use zerotag_ui::screens::emulation::{self, EmulationView};
 use zerotag_ui::screens::facets::{self, FacetRow, FacetsView};
 use zerotag_ui::screens::settings::{self, toggle_value, SettingsRow, SettingsView, Status};
+use zerotag_ui::screens::manual::{self, ManualView};
 use zerotag_ui::screens::scan::{self, ScanIssueView, ScanPhaseView, ScanView};
 use zerotag_ui::screens::library::{self, LibraryRow, LibraryView, Signature, Tab};
 use zerotag_ui::thumbs::Thumbnails;
@@ -143,5 +144,11 @@ fn main() {
         let view = ScanView { lang, phase, banner: None, battery: Some((83, false)) };
         scan::render(&mut Painter { canvas: &mut canvas, fonts: &fonts, thumbs: Some(&thumbs) }, &view);
         save(&canvas, &format!("{}/scan_{name}_{}.png", a[2], a[1]));
+    }
+
+    for (page, secs) in [(0usize, 2.5f64), (3, 7.1), (4, 11.9)] {
+        let view = ManualView { lang, page, seconds: secs, banner: None, battery: Some((83, false)) };
+        manual::render(&mut Painter { canvas: &mut canvas, fonts: &fonts, thumbs: None }, &view);
+        save(&canvas, &format!("{}/manual{page}_{}.png", a[2], a[1]));
     }
 }

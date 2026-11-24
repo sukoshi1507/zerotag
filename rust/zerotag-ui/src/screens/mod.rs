@@ -6,5 +6,6 @@ pub mod emulation;
 pub mod facets;
 pub mod help;
 pub mod library;
+pub mod manual;
 pub mod scan;
 pub mod settings;

@@ -26,6 +26,7 @@ use zerotag_ui::screens::detail::{self, Confirm, DetailView};
 use zerotag_ui::screens::emulation::{self, EmulationView};
 use zerotag_ui::screens::facets::{self, FacetRow, FacetsView};
 use zerotag_ui::screens::help::{self, HelpContext, HelpView};
+use zerotag_ui::screens::manual::{self, ManualView, PAGES as MANUAL_PAGES};
 use zerotag_ui::screens::library::{self, LibraryRow, LibraryView, Signature, Tab};
 use zerotag_ui::screens::scan::{self as scan_screen, ScanIssueView, ScanPhaseView, ScanView};
 use zerotag_ui::screens::settings::{self, toggle_value, SettingsRow, SettingsView, Status};
@@ -37,7 +38,8 @@ const ROWS: usize = 4;
 const BANNER: Duration = Duration::from_millis(4000);
 const AUTOSAVE_QUIET: Duration = Duration::from_millis(1500);
 const FACETS: [Facet; 3] = [Facet::AmiiboSeries, Facet::Game, Facet::Type];
-const SETTINGS_ROWS: usize = 9;
+const SETTINGS_ROWS: usize = 10;
+const ANIMATION_STEP: Duration = Duration::from_millis(50);
 const DISPLAY_QUIET: Duration = Duration::from_millis(600);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,6 +53,7 @@ pub enum Screen {
     CapSetup,
     Scan,
     Help,
+    Manual,
 }
 
 /// Where everything lives.
@@ -194,6 +197,9 @@ pub struct App<H: Hardware> {
     online_job: Option<OnlineJob>,
     downloader: Downloader,
     before_help: Screen,
+    manual_page: usize,
+    manual_t0: Instant,
+    last_anim: Instant,
 
     emu_error: Option<String>,
     emu_started: Instant,
@@ -262,6 +268,9 @@ impl<H: Hardware> App<H> {
             online_job: None,
             downloader: Arc::new(|dest, cancel| download_amiibo_list(dest, cancel)),
             before_help: Screen::Library,
+            manual_page: 0,
+            manual_t0: now,
+            last_anim: now,
             emu_error: None,
             emu_started: now,
             last_stats_key: 0,
@@ -408,6 +417,12 @@ impl<H: Hardware> App<H> {
         self.dirty = true;
         if screen == Screen::Scan {
             self.start_scan_if_idle();
+        }
+        if screen == Screen::Manual {
+            self.manual_t0 = Instant::now();
+            audio::start_music(); // no-op when sound is off
+        } else {
+            audio::stop_music();
         }
     }
 
@@ -825,6 +840,15 @@ impl<H: Hardware> App<H> {
             Screen::Facets => self.key_facets(key),
             Screen::Settings => self.key_settings(key),
             Screen::Emulating | Screen::Scan | Screen::Help => {} // ESC leaves (on release)
+            Screen::Manual => self.key_manual(key),
+        }
+    }
+
+    fn key_manual(&mut self, key: Key) {
+        if matches!(key, Key::Left | Key::Right) {
+            let step = if key == Key::Right { 1 } else { MANUAL_PAGES - 1 };
+            self.manual_page = (self.manual_page + step) % MANUAL_PAGES;
+            audio::play(Sound::Blip);
         }
     }
 
@@ -1045,9 +1069,14 @@ impl<H: Hardware> App<H> {
                     self.rescan();
                 }
                 7 => self.rescan(),
-                _ => {
+                8 => {
                     self.before_help = Screen::Settings;
                     self.go(Screen::Help);
+                    return;
+                }
+                _ => {
+                    self.manual_page = 0;
+                    self.go(Screen::Manual);
                     return;
                 }
             },
@@ -1099,6 +1128,7 @@ impl<H: Hardware> App<H> {
             }
             Screen::Scan => self.leave_scan(),
             Screen::Help => self.go(self.before_help),
+            Screen::Manual => self.go(Screen::Settings),
             Screen::Settings => self.go(self.before_settings),
             Screen::CapSetup => {
                 if !self.cap_busy {
@@ -1125,6 +1155,10 @@ impl<H: Hardware> App<H> {
                 self.battery = b;
                 self.dirty = true;
             }
+        }
+        if self.screen == Screen::Manual && now.duration_since(self.last_anim) >= ANIMATION_STEP {
+            self.last_anim = now;
+            self.dirty = true;
         }
         self.tick_online_update();
         if self.screen == Screen::Scan {
@@ -1188,6 +1222,7 @@ impl<H: Hardware> App<H> {
             Some("capsetup") => Screen::CapSetup,
             Some("scan") => Screen::Scan,
             Some("help") => Screen::Help,
+            Some("manual") => Screen::Manual,
             _ => return,
         };
         self.go(screen);
@@ -1491,6 +1526,16 @@ impl<H: Hardware> App<H> {
                 };
                 scan_screen::render(&mut p, &ScanView { lang, phase: &phase, banner, battery });
             }
+            Screen::Manual => manual::render(
+                &mut p,
+                &ManualView {
+                    lang,
+                    page: self.manual_page,
+                    seconds: Instant::now().duration_since(self.manual_t0).as_secs_f64(),
+                    banner,
+                    battery,
+                },
+            ),
             Screen::Help => {
                 let context = match self.before_help {
                     Screen::Catalogue => HelpContext::Catalogue,
@@ -1559,6 +1604,7 @@ impl<H: Hardware> App<H> {
                 ..Default::default()
             },
             SettingsRow { title: t(Str::HelpTitle), detail: t(Str::HelpMenuHint), ..Default::default() },
+            SettingsRow { title: t(Str::SettingsManual), detail: t(Str::ManualMenuHint), ..Default::default() },
         ]
     }
 
@@ -1964,7 +2010,7 @@ mod tests {
         let mut canvas = Canvas::new(320, 170, 0);
         for lang in [Lang::Fr, Lang::En, Lang::Ja, Lang::Zh] {
             e.app.set_language(lang);
-            for screen in [Screen::Library, Screen::Catalogue, Screen::Facets, Screen::Detail, Screen::Emulating, Screen::Settings, Screen::CapSetup, Screen::Scan, Screen::Help] {
+            for screen in [Screen::Library, Screen::Catalogue, Screen::Facets, Screen::Detail, Screen::Emulating, Screen::Settings, Screen::CapSetup, Screen::Scan, Screen::Help, Screen::Manual] {
                 e.app.screen = screen;
                 e.app.render(&mut canvas);
             }
@@ -2224,6 +2270,45 @@ mod tests {
         e.app.start_online_update();
         drop(e); // would hang here if the download were not told to stop
         assert!(seen.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn manual_pages_music_and_animation_ticks() {
+        let Some(mut e) = env(true, true) else { return };
+        press(&mut e.app, Key::F1);
+        for _ in 0..9 {
+            press(&mut e.app, Key::Down);
+        }
+        press(&mut e.app, Key::Enter);
+        assert_eq!((e.app.screen, e.app.manual_page), (Screen::Manual, 0));
+        // five pages, wrapping both ways
+        press(&mut e.app, Key::Left);
+        assert_eq!(e.app.manual_page, 4);
+        press(&mut e.app, Key::Right);
+        press(&mut e.app, Key::Right);
+        assert_eq!(e.app.manual_page, 1);
+        for _ in 0..4 {
+            press(&mut e.app, Key::Right);
+        }
+        assert_eq!(e.app.manual_page, 0);
+        // the animation asks for a new frame every 50 ms, not before
+        let t = Instant::now();
+        e.app.take_dirty();
+        e.app.tick(t + Duration::from_millis(60));
+        assert!(e.app.take_dirty());
+        e.app.tick(t + Duration::from_millis(70));
+        assert!(!e.app.take_dirty());
+        e.app.tick(t + Duration::from_millis(130));
+        assert!(e.app.take_dirty());
+        let mut canvas = Canvas::new(320, 170, 0);
+        e.app.render(&mut canvas);
+        // Help can be opened from the manual and comes back to it
+        press(&mut e.app, Key::Help);
+        assert_eq!(e.app.screen, Screen::Help);
+        press(&mut e.app, Key::Help);
+        assert_eq!(e.app.screen, Screen::Manual);
+        press(&mut e.app, Key::Esc);
+        assert_eq!(e.app.screen, Screen::Settings);
     }
 
     #[test]

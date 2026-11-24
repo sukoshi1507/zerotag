@@ -253,6 +253,11 @@ GPL code from pixl.js (reading it for ideas was already done once; prefer public
   language, rotation, sound, online, update, cap, keys, folder, help (the manual row is still missing). 23 app tests. `can_flush` now keeps
   the display quiet for ANY screen while an emulation runs (Help can be opened during one). Installed on the device; the real download and
   the keyboard use were left for the user to try.
+- Manual (demoscene) ported 2026-11-24: `screens::manual` (copper bars, 14 stars at 3 speeds, 36-slot sine scroller, 5 pages; frame drawn
+  last; every frame a pure function of page + elapsed time, helpers `bar_y`/`star_pos`/`scroll_offset` tested), app wiring (Settings row
+  "Manuel", Left/Right pages with blip, music started/stopped in `go()`, redraw every 50 ms). Measured on the device: 2.3 % CPU and 7 MB RSS
+  while the manual and its music run (the C++ app was ~34 %); no aplay left behind. The user confirmed the demo runs with its music.
+  The Rust app now has every screen of the C++ one: library, catalogue, facets, detail, emulation, settings, help, manual, scan, cap setup.
 - Next: the
   embedded-graphics UI (old line kept below for reference): library_state + config, platform (spidev/gpio ST25R3916 driver, emulation state machine, keyboard via evdev, audio,
   online_update, cap_setup), then the embedded-graphics UI. The NFC parts can only be checked on the device (ask for its address).
