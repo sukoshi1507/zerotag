@@ -6,6 +6,7 @@ use zerotag_ui::screens::detail::{self, Confirm, DetailView};
 use zerotag_ui::screens::emulation::{self, EmulationView};
 use zerotag_ui::screens::facets::{self, FacetRow, FacetsView};
 use zerotag_ui::screens::settings::{self, toggle_value, SettingsRow, SettingsView, Status};
+use zerotag_ui::screens::scan::{self, ScanIssueView, ScanPhaseView, ScanView};
 use zerotag_ui::screens::library::{self, LibraryRow, LibraryView, Signature, Tab};
 use zerotag_ui::thumbs::Thumbnails;
 use zerotag_ui::widgets::Painter;
@@ -124,4 +125,23 @@ fn main() {
     let view = FacetsView { lang, browsing: None, rows: &rows, selected: 0, top: 0, banner: None, battery: Some((83, false)) };
     facets::render(&mut Painter { canvas: &mut canvas, fonts: &fonts, thumbs: None }, &view);
     save(&canvas, &format!("{}/facets_{}.png", a[2], a[1]));
+
+    let phases = [
+        ("waiting", ScanPhaseView::Waiting { issue: Some(ScanIssueView::Interrupted { page: 52 }) }),
+        ("reading", ScanPhaseView::Reading { progress: 70 }),
+        (
+            "saved",
+            ScanPhaseView::Saved {
+                name: Some(link.name.clone()),
+                entry_id: link.id.clone(),
+                file: "Link_167F2F06.bin".into(),
+                uid: "04:E1:7B:16:71:2F:06".into(),
+            },
+        ),
+    ];
+    for (name, phase) in &phases {
+        let view = ScanView { lang, phase, banner: None, battery: Some((83, false)) };
+        scan::render(&mut Painter { canvas: &mut canvas, fonts: &fonts, thumbs: Some(&thumbs) }, &view);
+        save(&canvas, &format!("{}/scan_{name}_{}.png", a[2], a[1]));
+    }
 }

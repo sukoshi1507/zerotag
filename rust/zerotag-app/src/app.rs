@@ -15,6 +15,7 @@ use zerotag_core::cap_setup::Status as CapStatus;
 use zerotag_core::config::{save_setting, ApplicationConfig};
 use zerotag_core::device_status::read_device_status;
 use zerotag_core::input::{Key, Routed};
+use zerotag_core::scan::{backup_stem, ScanIssue, ScanPhase, ScanSnapshot};
 use zerotag_ui::i18n::{format, tr};
 use zerotag_ui::screens::cap_setup::{self, CapSetupView};
 use zerotag_ui::screens::catalogue::{self, CatalogueRow, CatalogueView};
@@ -22,6 +23,7 @@ use zerotag_ui::screens::detail::{self, Confirm, DetailView};
 use zerotag_ui::screens::emulation::{self, EmulationView};
 use zerotag_ui::screens::facets::{self, FacetRow, FacetsView};
 use zerotag_ui::screens::library::{self, LibraryRow, LibraryView, Signature, Tab};
+use zerotag_ui::screens::scan::{self as scan_screen, ScanIssueView, ScanPhaseView, ScanView};
 use zerotag_ui::screens::settings::{self, toggle_value, SettingsRow, SettingsView, Status};
 use zerotag_ui::thumbs::Thumbnails;
 use zerotag_ui::widgets::{clip_chars, Painter};
@@ -43,6 +45,7 @@ pub enum Screen {
     Emulating,
     Settings,
     CapSetup,
+    Scan,
 }
 
 /// Where everything lives.
@@ -121,6 +124,14 @@ fn handle_text_key(key: Key, query: &mut String) -> bool {
     }
 }
 
+/// A scan that was read and written to the library.
+#[derive(Debug, Clone)]
+struct SavedScan {
+    entry: Option<Entry>,
+    file: String,
+    uid: String,
+}
+
 pub struct App<H: Hardware> {
     hw: H,
     paths: Paths,
@@ -159,6 +170,12 @@ pub struct App<H: Hardware> {
     settings_top: usize,
     cap_status: String,
     cap_ok: bool,
+
+    /// Result of the last scan (a finished scan stays on screen until ESC).
+    scan_saved: Option<SavedScan>,
+    scan_failed: Option<String>,
+    scan_sounded: bool,
+    last_scan: Option<ScanSnapshot>,
 
     emu_error: Option<String>,
     emu_started: Instant,
@@ -220,6 +237,10 @@ impl<H: Hardware> App<H> {
             settings_top: 0,
             cap_status: String::new(),
             cap_ok: false,
+            scan_saved: None,
+            scan_failed: None,
+            scan_sounded: false,
+            last_scan: None,
             emu_error: None,
             emu_started: now,
             last_stats_key: 0,
@@ -359,6 +380,88 @@ impl<H: Hardware> App<H> {
         self.screen = screen;
         self.confirm = Confirm::None;
         self.dirty = true;
+        if screen == Screen::Scan {
+            self.start_scan_if_idle();
+        }
+    }
+
+    // ---- scan of a real amiibo
+
+    fn start_scan_if_idle(&mut self) {
+        // A finished scan stays on screen until ESC; a scan still running is not started twice.
+        if self.scan_saved.is_some() || self.hw.scan_snapshot().is_some() {
+            return;
+        }
+        self.scan_failed = None;
+        self.scan_sounded = false;
+        self.last_scan = None;
+        self.hw.start_scan();
+    }
+
+    fn leave_scan(&mut self) {
+        self.hw.stop_scan();
+        self.scan_saved = None;
+        self.scan_failed = None;
+        self.last_scan = None;
+        self.go(Screen::Library);
+    }
+
+    /// The worker has read a whole tag: save it in the library and show it.
+    fn finish_scan(&mut self) {
+        let Some(image) = self.hw.finish_scan() else {
+            self.scan_failed = Some("no image".into());
+            return;
+        };
+        let be32 = |o: usize| u32::from_be_bytes(image[o..o + 4].try_into().unwrap());
+        let entry = self.db.find(be32(0x54), be32(0x58)).cloned();
+        let _ = std::fs::create_dir_all(&self.paths.library_dir);
+        let stem = backup_stem(entry.as_ref(), &image);
+        let path = (1..)
+            .map(|n| {
+                let name = if n == 1 { stem.clone() } else { format!("{stem}_{n}") };
+                self.paths.library_dir.join(format!("{name}.bin"))
+            })
+            .find(|p| !p.exists())
+            .expect("an unused name");
+        if let Err(e) = write_image(&path, &image) {
+            self.scan_failed = Some(e.clone());
+            audio::play(Sound::Error);
+            self.say(format(self.lang, Str::BannerSaveFailed, &[&e]), true);
+            return;
+        }
+        self.rescan();
+        self.lib_query.clear();
+        self.lib_sel = 0;
+        self.lib_top = 0;
+        if let Some(pos) = self.visible_items().iter().position(|&i| self.library.items()[i].path == path) {
+            self.lib_sel = pos;
+            self.lib_top = (pos + 1).saturating_sub(ROWS);
+        }
+        let uid = [image[0], image[1], image[2], image[4], image[5], image[6], image[7]]
+            .iter()
+            .map(|b| format!("{b:02X}"))
+            .collect::<Vec<_>>()
+            .join(":");
+        let file = Self::base_name(&path);
+        self.scan_saved = Some(SavedScan { entry, file: file.clone(), uid });
+        audio::play(Sound::Success); // tu-du-tuuu
+        self.say(format(self.lang, Str::BannerScanned, &[&file]), false);
+    }
+
+    fn tick_scan(&mut self) {
+        let Some(snap) = self.hw.scan_snapshot() else { return };
+        if self.last_scan.as_ref() != Some(&snap) {
+            self.dirty = true;
+        }
+        if snap.phase == ScanPhase::Done {
+            self.finish_scan();
+            self.dirty = true;
+        }
+        if snap.phase == ScanPhase::Failed && !self.scan_sounded {
+            self.scan_sounded = true;
+            audio::play(Sound::Error);
+        }
+        self.last_scan = Some(snap);
     }
 
     fn persist(&self, key: &str, value: &str) {
@@ -634,7 +737,7 @@ impl<H: Hardware> App<H> {
             Screen::Detail => self.key_detail(key),
             Screen::Facets => self.key_facets(key),
             Screen::Settings => self.key_settings(key),
-            Screen::Emulating => {} // ESC leaves (on release)
+            Screen::Emulating | Screen::Scan => {} // ESC leaves (on release)
         }
     }
 
@@ -701,7 +804,14 @@ impl<H: Hardware> App<H> {
                 self.lib_sel = 0;
                 self.lib_top = 0;
             }
-            Key::F4 => self.say("Scan: pas encore porté en Rust", true),
+            Key::F4 => {
+                // Scan a real amiibo: without the Cap, first go through the setup screen (it comes back to the scan).
+                if !self.hw.spi_available() {
+                    self.open_cap_setup(Screen::Scan);
+                } else {
+                    self.go(Screen::Scan);
+                }
+            }
             k => {
                 if handle_text_key(k, &mut self.lib_query) {
                     self.lib_sel = 0;
@@ -891,6 +1001,7 @@ impl<H: Hardware> App<H> {
                 self.stop_emulation();
                 self.go(Screen::Detail);
             }
+            Screen::Scan => self.leave_scan(),
             Screen::Settings => self.go(self.before_settings),
             Screen::CapSetup => {
                 if !self.cap_busy {
@@ -917,6 +1028,9 @@ impl<H: Hardware> App<H> {
                 self.battery = b;
                 self.dirty = true;
             }
+        }
+        if self.screen == Screen::Scan {
+            self.tick_scan();
         }
         if self.screen != Screen::Emulating && !self.hw.emulation_running() {
             return;
@@ -974,6 +1088,7 @@ impl<H: Hardware> App<H> {
                 Screen::Detail
             }
             Some("capsetup") => Screen::CapSetup,
+            Some("scan") => Screen::Scan,
             _ => return,
         };
         self.go(screen);
@@ -1002,6 +1117,20 @@ impl<H: Hardware> App<H> {
 
     pub fn mark_dirty(&mut self) {
         self.dirty = true;
+    }
+
+    /// One line describing the scan (for the `--screen scan` test run).
+    pub fn scan_status_line(&self) -> String {
+        if let Some(s) = &self.scan_saved {
+            return format!("saved {} uid {}", s.file, s.uid);
+        }
+        if let Some(e) = &self.scan_failed {
+            return format!("failed: {e}");
+        }
+        self.hw.scan_snapshot().map_or_else(
+            || "no scan".into(),
+            |sn| format!("{:?} progress={} issue={:?}@{} error={:?}", sn.phase, sn.progress, sn.issue, sn.issue_page, sn.error),
+        )
     }
 
     pub fn take_dirty(&mut self) -> bool {
@@ -1234,6 +1363,35 @@ impl<H: Hardware> App<H> {
                     &SettingsView { lang, rows: &rows, selected: self.settings_sel, top: self.settings_top, banner, battery },
                 );
             }
+            Screen::Scan => {
+                let phase = if let Some(saved) = &self.scan_saved {
+                    ScanPhaseView::Saved {
+                        name: saved.entry.as_ref().map(|e| e.name.clone()),
+                        entry_id: saved.entry.as_ref().map_or_else(String::new, |e| e.id.clone()),
+                        file: saved.file.clone(),
+                        uid: saved.uid.clone(),
+                    }
+                } else if let Some(msg) = &self.scan_failed {
+                    ScanPhaseView::Failed { message: msg.clone() }
+                } else {
+                    match self.hw.scan_snapshot() {
+                        None => ScanPhaseView::Opening,
+                        Some(sn) => match sn.phase {
+                            ScanPhase::Opening => ScanPhaseView::Opening,
+                            ScanPhase::Waiting => ScanPhaseView::Waiting {
+                                issue: match sn.issue {
+                                    ScanIssue::None => None,
+                                    ScanIssue::NotNtag215 => Some(ScanIssueView::NotNtag215),
+                                    ScanIssue::Interrupted => Some(ScanIssueView::Interrupted { page: sn.issue_page }),
+                                },
+                            },
+                            ScanPhase::Reading | ScanPhase::Done => ScanPhaseView::Reading { progress: sn.progress },
+                            ScanPhase::Failed => ScanPhaseView::Failed { message: sn.error },
+                        },
+                    }
+                };
+                scan_screen::render(&mut p, &ScanView { lang, phase: &phase, banner, battery });
+            }
             Screen::CapSetup => cap_setup::render(
                 &mut p,
                 &CapSetupView {
@@ -1316,6 +1474,10 @@ mod tests {
         setup_calls: Vec<String>,
         setup_ok: bool,
         stats: LiveStats,
+        scan: Option<ScanSnapshot>,
+        scan_image: Option<Image>,
+        scans_started: u32,
+        scans_stopped: u32,
     }
 
     #[derive(Clone, Default)]
@@ -1355,6 +1517,25 @@ mod tests {
             s.running = false;
             let was = std::mem::replace(&mut s.open, false);
             was.then(|| s.stop_result.take().unwrap_or(SessionResult { error: None, changed: false, image: [0; 540] }))
+        }
+        fn start_scan(&mut self) {
+            let mut s = self.0.borrow_mut();
+            s.scans_started += 1;
+            s.scan = Some(ScanSnapshot { phase: ScanPhase::Opening, progress: 0, issue: ScanIssue::None, issue_page: 0, error: String::new() });
+        }
+        fn scan_snapshot(&self) -> Option<ScanSnapshot> {
+            self.0.borrow().scan.clone()
+        }
+        fn finish_scan(&mut self) -> Option<Image> {
+            let mut s = self.0.borrow_mut();
+            s.scan = None;
+            s.scan_image.take()
+        }
+        fn stop_scan(&mut self) {
+            let mut s = self.0.borrow_mut();
+            if s.scan.take().is_some() {
+                s.scans_stopped += 1;
+            }
         }
         fn run_cap_setup(&mut self, password: &mut String) -> CapSetupResult {
             let mut s = self.0.borrow_mut();
@@ -1649,7 +1830,7 @@ mod tests {
         let mut canvas = Canvas::new(320, 170, 0);
         for lang in [Lang::Fr, Lang::En, Lang::Ja, Lang::Zh] {
             e.app.set_language(lang);
-            for screen in [Screen::Library, Screen::Catalogue, Screen::Facets, Screen::Detail, Screen::Emulating, Screen::Settings, Screen::CapSetup] {
+            for screen in [Screen::Library, Screen::Catalogue, Screen::Facets, Screen::Detail, Screen::Emulating, Screen::Settings, Screen::CapSetup, Screen::Scan] {
                 e.app.screen = screen;
                 e.app.render(&mut canvas);
             }
@@ -1669,6 +1850,119 @@ mod tests {
         e.mock.0.borrow_mut().stats.field = false;
         assert!(!e.app.can_flush(t0 + Duration::from_millis(200))); // just left: still quiet
         assert!(e.app.can_flush(t0 + Duration::from_millis(700)));
+    }
+
+    fn scan_snapshot(phase: ScanPhase, progress: u32) -> ScanSnapshot {
+        ScanSnapshot { phase, progress, issue: ScanIssue::None, issue_page: 0, error: String::new() }
+    }
+
+    #[test]
+    fn scan_reads_saves_the_tag_in_the_library_and_selects_it() {
+        let Some(mut e) = env(true, true) else { return };
+        press(&mut e.app, Key::F4);
+        assert_eq!(e.app.screen, Screen::Scan);
+        assert_eq!(e.mock.0.borrow().scans_started, 1);
+        // waiting, then an interrupted attempt, then reading
+        e.mock.0.borrow_mut().scan = Some(scan_snapshot(ScanPhase::Waiting, 0));
+        e.app.tick(Instant::now());
+        assert!(e.app.take_dirty());
+        let mut snap = scan_snapshot(ScanPhase::Waiting, 52);
+        snap.issue = ScanIssue::Interrupted;
+        snap.issue_page = 52;
+        e.mock.0.borrow_mut().scan = Some(snap);
+        e.app.tick(Instant::now());
+        e.mock.0.borrow_mut().scan = Some(scan_snapshot(ScanPhase::Reading, 70));
+        e.app.tick(Instant::now());
+
+        // a real-looking image: Zelda (01010000 000e0002) at pages 21-22, signed with the (fake) keys
+        let keys = e.app.keys.clone().unwrap();
+        let image = generate(&keys, 0x01010000, 0x000e0002).unwrap();
+        {
+            let mut s = e.mock.0.borrow_mut();
+            s.scan = Some(scan_snapshot(ScanPhase::Done, 135));
+            s.scan_image = Some(image);
+        }
+        e.app.tick(Instant::now());
+        let saved = e.app.scan_saved.clone().expect("saved");
+        assert!(saved.entry.as_ref().is_some_and(|en| en.name == "Zelda"), "{saved:?}");
+        assert!(saved.file.starts_with("Zelda_") && saved.file.ends_with(".bin"));
+        assert_eq!(read_image(e.lib.join(&saved.file)).unwrap(), image);
+        assert_eq!(e.app.library.items().len(), 1);
+        assert!(e.app.banner.as_ref().is_some_and(|b| b.0.contains(&saved.file)));
+
+        // the result stays on screen: entering the scan again does not start a new one
+        e.app.go(Screen::Scan);
+        assert_eq!(e.mock.0.borrow().scans_started, 1);
+        let mut canvas = Canvas::new(320, 170, 0);
+        e.app.render(&mut canvas);
+
+        press(&mut e.app, Key::Esc);
+        assert_eq!(e.app.screen, Screen::Library);
+        assert!(e.app.scan_saved.is_none());
+        // a second scan of the same figure gets another file name
+        press(&mut e.app, Key::F4);
+        assert_eq!(e.mock.0.borrow().scans_started, 2);
+        {
+            let mut s = e.mock.0.borrow_mut();
+            s.scan = Some(scan_snapshot(ScanPhase::Done, 135));
+            s.scan_image = Some(image);
+        }
+        e.app.tick(Instant::now());
+        assert_eq!(e.app.library.items().len(), 2);
+        assert!(e.app.scan_saved.as_ref().is_some_and(|s2| s2.file != saved.file));
+    }
+
+    #[test]
+    fn scan_of_an_unknown_figure_is_saved_under_its_uid_and_esc_stops_a_running_scan() {
+        let Some(mut e) = env(true, true) else { return };
+        press(&mut e.app, Key::F4);
+        let mut image = [0u8; 540];
+        image[..8].copy_from_slice(&[0x04, 0x11, 0x22, 0xBC, 0x33, 0x44, 0x55, 0x66]);
+        {
+            let mut s = e.mock.0.borrow_mut();
+            s.scan = Some(scan_snapshot(ScanPhase::Done, 135));
+            s.scan_image = Some(image);
+        }
+        e.app.tick(Instant::now());
+        assert_eq!(e.app.scan_saved.as_ref().unwrap().file, "04112233445566.bin");
+        assert!(e.app.scan_saved.as_ref().unwrap().entry.is_none());
+        press(&mut e.app, Key::Esc);
+
+        press(&mut e.app, Key::F4);
+        e.mock.0.borrow_mut().scan = Some(scan_snapshot(ScanPhase::Waiting, 0));
+        press(&mut e.app, Key::Esc); // leaves and powers the Cap off
+        assert_eq!((e.app.screen, e.mock.0.borrow().scans_stopped), (Screen::Library, 1));
+    }
+
+    #[test]
+    fn scan_without_the_spi_device_goes_through_the_cap_setup_and_comes_back_to_the_scan() {
+        let Some(mut e) = env(false, true) else { return };
+        press(&mut e.app, Key::Esc); // skip the setup shown at start
+        press(&mut e.app, Key::F4);
+        assert_eq!(e.app.screen, Screen::CapSetup);
+        e.mock.0.borrow_mut().setup_ok = true;
+        type_text(&mut e.app, "pw");
+        press(&mut e.app, Key::Enter);
+        assert_eq!(e.app.screen, Screen::Scan);
+        assert_eq!(e.mock.0.borrow().scans_started, 1);
+    }
+
+    #[test]
+    fn a_failed_scan_shows_the_reason_and_the_screen_renders() {
+        let Some(mut e) = env(true, true) else { return };
+        press(&mut e.app, Key::F4);
+        let mut snap = scan_snapshot(ScanPhase::Failed, 0);
+        snap.error = "cannot open /dev/spidev0.2: No such file or directory".into();
+        e.mock.0.borrow_mut().scan = Some(snap);
+        e.app.tick(Instant::now());
+        assert!(e.app.scan_sounded);
+        let mut canvas = Canvas::new(320, 170, 0);
+        for lang in [Lang::Fr, Lang::En, Lang::Ja, Lang::Zh] {
+            e.app.set_language(lang);
+            e.app.render(&mut canvas);
+        }
+        press(&mut e.app, Key::Esc);
+        assert_eq!(e.mock.0.borrow().scans_stopped, 1);
     }
 
     #[test]

@@ -8,3 +8,4 @@ pub mod input;
 pub mod audio;
 pub mod device_status;
 pub mod screenshot;
+pub mod scan;

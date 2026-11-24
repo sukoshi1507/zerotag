@@ -241,6 +241,12 @@ GPL code from pixl.js (reading it for ideas was already done once; prefer public
   CONFIRMED by the user 2026-11-24: the Flipper reads the emulated Young Link with the Rust app launched from APPLaunch. Test binaries
   removed from the device's /tmp. Still unverified with the Rust app: Switch, the WRITE path, iOS, all the keyboard screens beyond what the
   user tried (they said "le reste fonctionne"). The device still runs the Rust build (C++ saved as /usr/bin/zerotag.cpp.bak).
+- Scan of a real amiibo (F4) ported 2026-11-24: core `scan` module (`read_ntag215` over a `Type2` trait, tested with a fake tag; `ScanSession`
+  thread that opens the Cap itself; `backup_stem`), UI `screens::scan`, app wiring (Hardware::start_scan/scan_snapshot/finish_scan/stop_scan,
+  Cap-setup detour when the SPI device is missing, a finished scan stays on screen until ESC, second scan of the same figure gets a
+  different file name via the UID suffix). Verified on the device: a real Bokoblin read in ~10 s (135 pages), recognised, saved. A blank
+  NTAG215 (CC E1 10 3E 00, model id zeros) is correctly "hors catalogue". Test runs use ZEROTAG_AMIIBO_DIR=/tmp/zscan and `--screen scan`
+  (prints `scan: ...` status lines); the dump was shredded. The device now runs the Rust build WITH the scan.
 - Next: the
   embedded-graphics UI (old line kept below for reference): library_state + config, platform (spidev/gpio ST25R3916 driver, emulation state machine, keyboard via evdev, audio,
   online_update, cap_setup), then the embedded-graphics UI. The NFC parts can only be checked on the device (ask for its address).

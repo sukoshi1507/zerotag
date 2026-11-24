@@ -90,6 +90,8 @@ fn main() {
     }
     let started = Instant::now();
     let mut last_stats = None;
+    let scan_test = arg_value(&args, "--screen").as_deref() == Some("scan");
+    let mut last_scan_line = String::new();
     while !app.want_quit && (max_seconds == 0 || started.elapsed().as_secs() < max_seconds) {
         let now = Instant::now();
         for kp in &mut keypads {
@@ -106,6 +108,13 @@ fn main() {
             app.on_routed(r);
         }
         app.tick(now);
+        if scan_test {
+            let line = app.scan_status_line();
+            if line != last_scan_line {
+                eprintln!("scan: {line}");
+                last_scan_line = line;
+            }
+        }
         if emulate.is_some() {
             let st = app.emulation_stats();
             if last_stats != Some(st) {
