@@ -972,6 +972,17 @@ impl<H: Hardware> App<H> {
         self.go(screen);
     }
 
+    /// `--emulate FILE`: opens the detail screen of that backup and starts its emulation (no keyboard needed).
+    pub fn debug_emulate(&mut self, path: &Path) {
+        self.current = Some(path.to_owned());
+        self.start_emulation(path.to_owned());
+    }
+
+    /// Live emulation counters (for `--emulate`, printed from the main thread so the chip's thread is never slowed).
+    pub fn emulation_stats(&self) -> crate::hw::LiveStats {
+        self.hw.stats()
+    }
+
     pub fn take_dirty(&mut self) -> bool {
         std::mem::take(&mut self.dirty)
     }

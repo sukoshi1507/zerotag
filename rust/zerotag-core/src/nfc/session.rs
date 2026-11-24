@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 
 pub type Image = [u8; 540];
 pub type RotateUid = Box<dyn FnMut(&mut Image) -> bool + Send>;
+pub type LogFn = Box<dyn FnMut(&str) + Send>;
 
 #[derive(Debug, Clone)]
 pub struct SessionResult {
@@ -39,7 +40,7 @@ pub struct EmulationSession<B: Bus + Send + 'static> {
 impl<B: Bus + Send + 'static> EmulationSession<B> {
     /// Takes the chip for the duration of the session; `finish` gives it back.
     /// `seconds == 0`: run until `request_stop`. `rotate_uid` is called after each read session.
-    pub fn start(mut chip: Chip<B>, image: &Image, seconds: u64, rotate_uid: Option<RotateUid>) -> Self {
+    pub fn start(mut chip: Chip<B>, image: &Image, seconds: u64, rotate_uid: Option<RotateUid>, log: Option<LogFn>) -> Self {
         let stats = Arc::new(EmulationStats::default());
         let stop = Arc::new(AtomicBool::new(false));
         let running = Arc::new(AtomicBool::new(true));
@@ -59,7 +60,7 @@ impl<B: Bus + Send + 'static> EmulationSession<B> {
                     })
                 };
                 let options = EmulationOptions {
-                    log: None,
+                    log: log.map(|l| l as Box<dyn FnMut(&str)>),
                     stop: Some(Box::new(move || stop.load(Relaxed))),
                     stats: Some(stats),
                     rotate_uid: rotate_uid.map(|f| f as Box<dyn FnMut(&mut Image) -> bool>),

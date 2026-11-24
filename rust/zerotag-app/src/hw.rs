@@ -52,7 +52,9 @@ impl Hardware for RealHardware {
 
     fn start_emulation(&mut self, image: &Image, rotate: Option<RotateUid>) -> Result<(), String> {
         let chip = open_cap(&self.cfg).map_err(|e| e.0)?;
-        self.session = Some(EmulationSession::start(chip, image, 0, rotate));
+        let log: Option<zerotag_core::nfc::LogFn> = std::env::var_os("ZEROTAG_DEBUG")
+            .map(|_| Box::new(|m: &str| eprintln!("emu: {m}")) as zerotag_core::nfc::LogFn);
+        self.session = Some(EmulationSession::start(chip, image, 0, rotate, log));
         Ok(())
     }
 

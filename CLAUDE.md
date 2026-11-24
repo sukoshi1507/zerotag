@@ -220,6 +220,17 @@ GPL code from pixl.js (reading it for ideas was already done once; prefer public
   binary is saved as /usr/bin/zerotag.cpp.bak (sha256 eab75d77fd12c9a70856f7a38fef6989b3b2c1e82a31b4508be4d6d7801dc726). Restore:
   `sudo install -m 755 /usr/bin/zerotag.cpp.bak /usr/bin/zerotag` (then remove the .bak). dpkg will see zerotag as modified until restored
   or reinstalled. Waiting for the user's feedback on keys / display / speed when launched from APPLaunch.
+- Emulation finding 2026-11-24 (Flipper, built-in NFC Read): with the user's config (uid_rotation=yes) the Flipper said "unsupported tag" then
+  "valid NTAG215, ID 0000". Cause: the Flipper reads in several short sessions (GET_VERSION/READ_SIG, field drops, pages...) and the original
+  rule (also in the C++ app) rotated the UID at the FIRST field drop after a read, so the UID changed between the Flipper's sessions (the
+  Switch reads in one go, which is why it never showed). Fixed in the Rust port: rotation now happens ROTATION_DELAY = 3 s after the reader
+  left (cancelled if it comes back; also done when emulation is stopped with a rotation pending). Crypto is not the issue: rotate_uid takes
+  ~130 us on the device. Also learnt: log lines written to ssh from the emulation thread delay the chip's answers (sessions shrink to <=7
+  frames): never judge emulation with ZEROTAG_DEBUG logging on; use the counters (`--emulate FILE --seconds N` prints field/selected/reads
+  from the main thread). The example tool st25r_emulate (no rotation) was read completely by the Flipper (~70 reads per session) on the
+  real Young_Link backup. The C++ app (still on the device as .cpp.bak) has the old rotation rule; port the delay to C++ if it is kept.
+  Careful: the emulation test runs rotated and autosaved the user's ~/amiibo/Young_Link_DDFA7E09.bin several times (new UID, still validly
+  signed, same data): harmless but the file's UID is no longer the original one.
 - Next: the
   embedded-graphics UI (old line kept below for reference): library_state + config, platform (spidev/gpio ST25R3916 driver, emulation state machine, keyboard via evdev, audio,
   online_update, cap_setup), then the embedded-graphics UI. The NFC parts can only be checked on the device (ask for its address).

@@ -20,6 +20,9 @@ const MODE_LISTEN_NFC_A: u8 = TARG | (0x01 << 3); // target, NFC-A
 
 const PAGES: usize = 135;
 const PASSWORD_PAGE: usize = 133;
+/// A read session ends when the reader has been away this long (a Flipper, for instance, reads in several short
+/// sessions separated by field drops: the UID must not change between them).
+pub const ROTATION_DELAY: Duration = Duration::from_secs(3);
 const ACK: u8 = 0x0A;
 const NAK: u8 = 0x00;
 
@@ -150,6 +153,8 @@ struct Emulation<'c, 'o, B: Bus> {
     wakeup: bool,
     state: State,
     session_reads: u32,
+    /// When the UID is to be rotated: the reader left after at least one answered read.
+    rotation_due: Option<Instant>,
 }
 
 fn fail(step: &str) -> Error {
@@ -214,6 +219,14 @@ impl<B: Bus> Emulation<'_, '_, B> {
             self.chip.direct_command(if with_crc { CMD_TRANSMIT_WITH_CRC } else { CMD_TRANSMIT_WITHOUT_CRC })
         })();
         let _ = ok;
+    }
+
+    /// Diagnostic: the passive-target memory as the chip holds it (UID, ATQA, SAKs), "Read PT memory A" = 0xBF.
+    fn read_pt_memory_a(&mut self) -> Option<[u8; 15]> {
+        let tx = [0xBFu8; 16];
+        let mut rx = [0u8; 16];
+        self.chip.bus.transfer(&tx, &mut rx).ok()?;
+        rx[1..].try_into().ok()
     }
 
     /// 7-byte UID from pages 0-2 (the BCC bytes are not part of it), ATQA 0x0044, SAK 0x00.
@@ -343,24 +356,38 @@ impl<B: Bus> Emulation<'_, '_, B> {
         }
     }
 
-    fn end_session(&mut self) {
-        if self.session_reads > 0 {
-            if let Some(mut rotate) = self.opts.rotate_uid.take() {
-                let ok = rotate(self.image);
-                self.opts.rotate_uid = Some(rotate);
-                if ok {
-                    if !self.load_identity() {
-                        self.log("could not load the new UID into the chip");
-                    }
-                    if let Some(s) = &self.opts.stats {
-                        s.rotations.fetch_add(1, Relaxed);
-                    }
-                    if let Some(f) = self.opts.on_change.as_mut() {
-                        f(self.image);
-                    }
-                } else {
-                    self.log("UID rotation failed, keeping the current UID");
+    /// The reader field dropped after at least one answered read: schedules the UID rotation (it only happens once
+    /// the reader has stayed away for `ROTATION_DELAY`).
+    fn on_session_ended(&mut self) {
+        if self.session_reads > 0 && self.opts.rotate_uid.is_some() {
+            self.rotation_due = Some(Instant::now() + ROTATION_DELAY);
+        }
+    }
+
+    fn rotate_if_due(&mut self) {
+        if self.state == State::Off && self.rotation_due.is_some_and(|t| Instant::now() >= t) {
+            self.rotate_now();
+        }
+    }
+
+    /// Gives the image a new UID (the caller re-signs it) and reprograms the chip with it.
+    fn rotate_now(&mut self) {
+        self.rotation_due = None;
+        if let Some(mut rotate) = self.opts.rotate_uid.take() {
+            let ok = rotate(self.image);
+            self.opts.rotate_uid = Some(rotate);
+            if ok {
+                if !self.load_identity() {
+                    self.log("could not load the new UID into the chip");
                 }
+                if let Some(s) = &self.opts.stats {
+                    s.rotations.fetch_add(1, Relaxed);
+                }
+                if let Some(f) = self.opts.on_change.as_mut() {
+                    f(self.image);
+                }
+            } else {
+                self.log("UID rotation failed, keeping the current UID");
             }
         }
         self.session_reads = 0;
@@ -374,8 +401,15 @@ impl<B: Bus> Emulation<'_, '_, B> {
         }
         let previous = self.state;
         self.state = actual;
+        if self.opts.log.is_some() && matches!(actual, State::Ready | State::Active) && actual != previous {
+            if let Some(pt) = self.read_pt_memory_a() {
+                self.log(&format!("  pt memory: {}", hex(&pt)));
+            }
+        }
         if actual == State::Off && previous != State::Off {
-            self.end_session();
+            self.on_session_ended();
+        } else if actual != State::Off {
+            self.rotation_due = None; // the reader is back: still the same session
         }
         if let Some(s) = &self.opts.stats {
             s.field.store(actual != State::Off, Relaxed);
@@ -398,6 +432,7 @@ impl<B: Bus> Emulation<'_, '_, B> {
         let mut frames = 0u32;
         while Instant::now() < deadline && !self.opts.stop.as_ref().is_some_and(|s| s()) {
             self.poll();
+            self.rotate_if_due();
             match self.state {
                 State::Off => {
                     if self.take(IRQ_EON) != 0 {
@@ -554,6 +589,7 @@ impl<B: Bus> Chip<B> {
             wakeup: false,
             state: State::Off,
             session_reads: 0,
+            rotation_due: None,
         };
         if !emu.load_identity() {
             return Err(fail("passive target memory"));
@@ -575,6 +611,9 @@ impl<B: Bus> Chip<B> {
         let deadline = Instant::now() + Duration::from_secs(if seconds > 0 { seconds } else { 24 * 3600 });
         let frames = emu.run(deadline);
 
+        if emu.rotation_due.is_some() {
+            emu.rotate_now(); // stopped while a rotation was pending: the saved image carries the new UID
+        }
         if let Some(s) = &emu.opts.stats {
             s.field.store(false, Relaxed);
             s.selected.store(false, Relaxed);

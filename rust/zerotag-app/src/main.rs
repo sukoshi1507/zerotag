@@ -55,6 +55,8 @@ fn main() {
         }
     };
     app.debug_screen(arg_value(&args, "--screen").as_deref());
+    let emulate = arg_value(&args, "--emulate");
+    let max_seconds: u64 = arg_value(&args, "--seconds").and_then(|s| s.parse().ok()).unwrap_or(0);
 
     let mut canvas = Canvas::new(SCREEN_W, SCREEN_H, 0);
     if let Some(out) = arg_value(&args, "--png") {
@@ -83,7 +85,12 @@ fn main() {
         eprintln!("zerotag: {} keyboard device(s)", keypads.len());
     }
     let mut router = KeyRouter::default();
-    while !app.want_quit {
+    if let Some(f) = &emulate {
+        app.debug_emulate(std::path::Path::new(f));
+    }
+    let started = Instant::now();
+    let mut last_stats = None;
+    while !app.want_quit && (max_seconds == 0 || started.elapsed().as_secs() < max_seconds) {
         let now = Instant::now();
         for kp in &mut keypads {
             for ev in kp.poll() {
@@ -99,6 +106,13 @@ fn main() {
             app.on_routed(r);
         }
         app.tick(now);
+        if emulate.is_some() {
+            let st = app.emulation_stats();
+            if last_stats != Some(st) {
+                eprintln!("field={} selected={} reads={} writes={}", st.field as u8, st.selected as u8, st.reads, st.writes);
+                last_stats = Some(st);
+            }
+        }
         if app.take_dirty() {
             app.render(&mut canvas);
             if let Err(e) = framebuffer.present(&canvas) {
