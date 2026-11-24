@@ -205,6 +205,17 @@ GPL code from pixl.js (reading it for ideas was already done once; prefer public
 - Simplified Chinese added (user request) to the Rust port only: `Lang::Zh` (code "zh"), strings in tools/i18n_zh_hans.tsv merged by
   tools/gen_i18n_rs.py into rust/zerotag-ui/src/i18n_strings.rs (regenerate with `python3 tools/gen_i18n_rs.py`; it fails when a string
   is missing or a placeholder differs). Font face 2 (SC) of the .ttc for zh, face 0 (JP) for fr/en/ja. The C++ app still has 3 languages.
+- App (rust/zerotag-app, binary `zerotag`): main loop (Keypad -> KeyRouter -> App), `Framebuffer` (finds the 320x170 16 bpp fb under
+  /sys/class/graphics; fb0 = panel-mipi-dbid), `Hardware` trait + `RealHardware`, App logic with 13 mock-hardware tests (cap setup right /
+  wrong password, create blank, favourites/tabs, delete with double confirmation, emulation save-on-stop / autosave / worker death,
+  settings persistence, facets, every screen x 4 languages). Options: `--assets DIR` (default /usr/share/zerotag, ./assets), `--png out.png
+  --screen library|catalogue|settings|detail|capsetup` (headless render, used with HOME/ZEROTAG_AMIIBO_DIR/ZEROTAG_KEYS pointing to a scratch
+  dir), `ZEROTAG_DEBUG=1` prints keyboard events. Bug found by the tests: a missing ~/amiibo made `create` fail (Library::new keeps the dir).
+  Not ported yet in the app: help, manual, scan (F4 shows a banner), online update button; settings rows: language, rotation, sound,
+  online toggle, cap, keys, folder.
+- Device test 2026-11-24: the Rust UI draws correctly on fb0 with the user's 6 real backups (screenshot via ffmpeg fbdev). Launched over
+  ssh no key reached it (3 keyboard devices opened but APPLaunch owns the keys) and the launcher's status icons draw over the top-right
+  corner: to test the keyboard the app must be started BY APPLaunch (its .desktop runs /usr/bin/zerotag). Nothing was installed.
 - Next: the
   embedded-graphics UI (old line kept below for reference): library_state + config, platform (spidev/gpio ST25R3916 driver, emulation state machine, keyboard via evdev, audio,
   online_update, cap_setup), then the embedded-graphics UI. The NFC parts can only be checked on the device (ask for its address).
